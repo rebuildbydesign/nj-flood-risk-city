@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>NJ Municipal Flood Risk & Public Asset Explorer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="styles.css" rel="stylesheet" />
+  <script src='https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js'></script>
+  <link href='https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css' rel='stylesheet' />
+</head>
+<body>
+  
+  <!-- ========================================
+       SIDEBAR - Left panel with controls
+       ======================================== -->
+  <div id="sidebar">
+    
+    <!-- Header & Introduction -->
+    <p class="purpose-strong">NJ Municipal Flood Risk &amp; Public Asset Explorer</p>
+    <p class="helper-text">
+      Rebuild by Design examined 8 municipalities across New Jersey as an extension of the <a href="https://rebuildbydesign.org/nj-flood-risk/" target="_blank" class="report-link"><em>NJ Flood Risk = Financial Risk</em></a> report. Annual property tax revenue is at risk of displacement without government intervention for sea level rise — and everyday critical infrastructure including schools, hospitals, parks, and wastewater facilities is also exposed. This tool maps public assets within current and projected floodplains at the municipal level to support proactive planning.
+    </p>
+    <!-- Step 1: Municipality Selection -->
+    <h3>Step 1: Select a Municipality</h3>
+    <p class="helper-text">
+      Focus on one municipality at a time to understand local exposure.
+      Don't see yours? <a href="mailto:jhuynh@rebuildbydesign.org?subject=Municipality%20Request%20-%20NJ%20Flood%20Risk%20Explorer" class="request-city-link"><em>Request a city</em></a>.
+    </p>
+    <select id="municipality-select">
+      <option value="NEWARK CITY">Newark</option>
+      <option value="ELIZABETH CITY">Elizabeth</option>
+      <option value="CAMDEN CITY">Camden</option>
+      <option value="TRENTON CITY">Trenton</option>
+      <option value="JERSEY CITY">Jersey City</option>
+      <option value="PATERSON CITY">Paterson</option>
+      <option value="ASBURY PARK CITY">Asbury Park</option>
+      <option value="ATLANTIC CITY">Atlantic City</option>
+    </select>
+    
+    <br /><br />
+    
+    <!-- Step 2: Scenario Toggle Buttons -->
+    <div class="button-group">
+      <h3>Step 2: Compare Flood Risk Scenarios</h3>
+      <p class="helper-text">
+        Toggle between current and future coastal flood risk to understand how exposure increases over time.
+      </p>
+      <button id="toggle-2025" class="active">Current Flood Risk (2025)</button>
+      <button id="toggle-2050">Future Flood Risk (2050)</button>
+    </div>
+    
+    <!-- Step 3: Legend (dynamically populated by scripts.js) -->
+    <div id="legend">
+      <h3>Step 3: Explore Exposed Assets</h3>
+      <p class="legend-helper">
+        Colored points represent public assets located within the selected floodplain.
+      </p>
+    </div>
+    
+    <!-- Download Section -->
+      <button id="download-csv" class="download-button">
+        Export Municipality Findings >>
+      </button>
+
+    </div>
+    
+
+    </div>
+    
+    <!-- Methodology Popup Modal -->
+
+
+<!-- Methodology Popup Modal -->
+<div id="methodology-popup" class="popup hidden">
+  <div class="popup-content">
+    <button id="close-methodology" aria-label="Close">×</button>
+    <h4>Methodology</h4>
+    
+    <p>
+      This analysis evaluates public asset exposure to flooding under current and
+      future conditions using floodplain datasets developed by Rutgers University
+      and the New Jersey Department of Environmental Protection (NJDEP). Flood scenarios represent water-level–based flooding only and do not include rainfall-driven runoff, stormwater ponding, or sewer system impacts.
+    </p>
+    
+      <ul class="data-sources">
+     <li>The <a href="https://www.arcgis.com/home/item.html?id=6a396b4763974c7db05353bbd5f03357" target="_blank">2025 flood scenario</a> represents the 1% annual chance
+      (100-year) floodplain derived from Rutgers' modified statewide FEMA Flood
+      Hazard Area layer.</li>
+      <li>
+      The <a href="https://rutgers.maps.arcgis.com/home/item.html?id=3cb5ca51630743b7b3ecdb0e360c89ba" target="_blank">2050 flood scenario</a> represents the 1% annual chance (100-year)
+      floodplain plus three feet of additional flood
+      elevation, developed by Rutgers in consultation with NJDEP to align
+      with New Jersey's Inland Flood Protection Rule.</li>
+      </ul>
+    
+    <p>
+      Public asset locations were buffered by <strong>100 feet</strong> to account
+      for building footprints, access constraints, and localized service disruption
+      beyond a single point location. Assets were classified as exposed if their
+      buffered area intersected either floodplain.
+    </p>
+    
+    <!-- Data Sources Section -->
+    <ul class="data-sources">
+      <li><strong>Aviation Facilities:</strong> <a href="https://share-open-data-njtpa.hub.arcgis.com/datasets/1551114f78e34d8395fd77bf41cd8a80_0/explore?location=40.500740%2C-74.295434%2C8" target="_blank" rel="noopener noreferrer">USDOT</a></li>
+      <li><strong>Superfunds:</strong> <a href="https://www.epa.gov/superfund/national-priorities-list-npl-sites-state#NJ" target="_blank" rel="noopener noreferrer">EPA NPL</a></li>
+      <li><strong>Known Contaminated Sites:</strong> <a href="https://gisdata-njdep.opendata.arcgis.com/datasets/b167bb2ae09c43f8ab9e954700be45d9_0/about" target="_blank" rel="noopener noreferrer">NJDEP</a></li>
+      <li><strong>Wastewater Treatment:</strong> <a href="https://catalog.data.gov/dataset/epa-facility-registry-service-frs-npdes8" target="_blank">EPA</a></li>
+      <li><strong>Libraries:</strong> <a href="https://njogis-newjersey.opendata.arcgis.com/datasets/9341dca37cdf4f258f2df6ae439f5be4_11/explore" target="_blank" rel="noopener noreferrer">NJDCA GIS</a></li>
+      <li><strong>Parks:</strong> <a href="https://www.tpl.org/park-data-downloads" target="_blank" rel="noopener noreferrer">Trust for Public Land</a></li>
+      <li><strong>Solid Waste Landfills:</strong> <a href="https://gisdata-njdep.opendata.arcgis.com/datasets/88739aaafd20465c91fa34e326a94c68_30/explore?location=40.078879%2C-74.743050%2C8" target="_blank" rel="noopener noreferrer">NJDEP Bureau of GIS</a></li>
+      <li><strong>Power Plants:</strong> <a href="https://hub.arcgis.com/datasets/fedmaps::power-plants-in-the-u-s--2/about" target="_blank" rel="noopener noreferrer">US EIA</a></li>
+      <li><strong>Schools:</strong> <a href="https://njogis-newjersey.opendata.arcgis.com/datasets/6f5ebca854234638953a9342f5b3d620_0/explore" target="_blank" rel="noopener noreferrer">New Jersey Office of GIS</a></li>
+      <li><strong>Solid & Hazardous Waste:</strong> <a href="https://gisdata-njdep.opendata.arcgis.com/datasets/njdep::solid-and-hazardous-waste-facilities-ej-in-new-jersey/about" target="_blank" rel="noopener noreferrer">NJDEP Bureau of GIS</a></li>
+      <li><strong>Hospitals:</strong> <a href="https://njogis-newjersey.opendata.arcgis.com/datasets/296e4de9d55640ffb9bb766f9606363b_1/explore" target="_blank" rel="noopener noreferrer">New Jersey Office of GIS</a></li>
+    </ul>
+    
+  </div>
+</div>
+    
+  </div>
+  <!-- End Sidebar -->
+  
+  <!-- ========================================
+       MAP CONTAINER - Mapbox GL renders here
+       ======================================== -->
+  <div id="map"></div>
+  
+  <!-- Logo Overlay (top-left on map) -->
+  <div class="map-logo">
+    <img src="img/RBD-logo.png" alt="Rebuild by Design logo">
+  </div>
+
+  <!-- Methodology Info Button (bottom-right on map) -->
+  <button id="methodology-link" class="map-info-btn" aria-label="Methodology">i</button>
+
+
+
+  <script src="scripts.js"></script>
+  
+
+</body>
+</html>
