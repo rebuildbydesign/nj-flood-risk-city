@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>NJ Municipal Flood Risk & Public Asset Explorer</title>
+  <title>NEW JERSEY CITIES & FLOOD RISK</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="styles.css" rel="stylesheet" />
   <script src='https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js'></script>
@@ -16,15 +16,15 @@
   <div id="sidebar">
     
     <!-- Header & Introduction -->
-    <p class="purpose-strong">NJ Municipal Flood Risk &amp; Public Asset Explorer</p>
+    <p class="purpose-strong">NEW JERSEY CITIES &amp; FLOOD RISK</p>
     <p class="helper-text">
-      Rebuild by Design examined 8 municipalities across New Jersey as an extension of the <a href="https://rebuildbydesign.org/nj-flood-risk/" target="_blank" class="report-link"><em>NJ Flood Risk = Financial Risk</em></a> report. Annual property tax revenue is at risk of displacement without government intervention for sea level rise — and everyday critical infrastructure including schools, hospitals, parks, and wastewater facilities is also exposed. This tool maps public assets within current and projected floodplains at the municipal level to support proactive planning.
+      An extension of the <a href="https://rebuildbydesign.org/nj-flood-risk/" target="_blank" class="report-link"><em>NJ Flood Risk = Financial Risk</em></a> report, this tool maps public assets exposed to flooding across 8 New Jersey cities. Without intervention, rising flood risk threatens property tax revenue and the critical infrastructure communities depend on, from schools and hospitals to parks and wastewater facilities.
     </p>
-    <!-- Step 1: Municipality Selection -->
-    <h3>Step 1: Select a Municipality</h3>
+    <!-- Step 1: City Selection -->
+    <h3>Step 1: Select a City</h3>
     <p class="helper-text">
-      Focus on one municipality at a time to understand local exposure.
-      Don't see yours? <a href="mailto:jhuynh@rebuildbydesign.org?subject=Municipality%20Request%20-%20NJ%20Flood%20Risk%20Explorer" class="request-city-link"><em>Request a city</em></a>.
+      Focus on one city at a time to understand local exposure.
+      Don't see yours? <a href="mailto:jhuynh@rebuildbydesign.org?subject=City%20Request%20-%20NJ%20Flood%20Risk%20Explorer" class="request-city-link"><em>Request a city</em></a>.
     </p>
     <select id="municipality-select">
       <option value="NEWARK CITY">Newark</option>
@@ -36,14 +36,13 @@
       <option value="ASBURY PARK CITY">Asbury Park</option>
       <option value="ATLANTIC CITY">Atlantic City</option>
     </select>
-    
-    <br /><br />
+  
     
     <!-- Step 2: Scenario Toggle Buttons -->
     <div class="button-group">
       <h3>Step 2: Compare Flood Risk Scenarios</h3>
       <p class="helper-text">
-        Toggle between current and future coastal flood risk to understand how exposure increases over time.
+        Toggle between current and future 100-year floodplain and increased risk over time.
       </p>
       <button id="toggle-2025" class="active">Current Flood Risk (2025)</button>
       <button id="toggle-2050">Future Flood Risk (2050)</button>
@@ -59,7 +58,7 @@
     
     <!-- Download Section -->
       <button id="download-csv" class="download-button">
-        Export Municipality Findings >>
+        Export City Findings >>
       </button>
 
     </div>
