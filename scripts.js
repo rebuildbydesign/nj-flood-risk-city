@@ -21,6 +21,16 @@ let activeYear = "2025";
 let activeCity = "NEWARK CITY";
 let popup = null;
 
+// --- Deep-link: read ?city= URL parameter from county map ---
+(function() {
+    const param = new URLSearchParams(window.location.search).get('city');
+    const validCities = ["NEWARK CITY","ELIZABETH CITY","CAMDEN CITY","TRENTON CITY",
+                         "JERSEY CITY","PATERSON CITY","ASBURY PARK CITY","ATLANTIC CITY"];
+    if (param && validCities.includes(param)) {
+        activeCity = param;
+    }
+})();
+
 // Boundary bounds cache - stores precomputed map bounds for each municipality
 const boundaryBoundsByMun = {};
 
@@ -639,6 +649,10 @@ map.on('load', () => {
     loadLayers();
   };
   
+  // ---- Sync dropdown to activeCity (may be set via URL param) ----
+  const selectEl = document.getElementById('municipality-select');
+  if (selectEl) selectEl.value = activeCity;
+
   // ---- Load CSV totals, then initial state ----
   loadMunicipalityTotals().then(() => {
     loadLayers();

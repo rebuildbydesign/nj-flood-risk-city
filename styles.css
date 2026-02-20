@@ -14,6 +14,20 @@ method-strong {
   color: #f7c320;
 }
 
+/* Back link to county map */
+.back-to-county {
+  display: inline-block;
+  color: #6b7280;
+  font-size: 0.78em;
+  text-decoration: none;
+  letter-spacing: 0.03em;
+  margin-bottom: 10px;
+  transition: color 0.15s ease;
+}
+.back-to-county:hover {
+  color: #dd4000;
+}
+
 /* ========================================
    MAP LOGO - Top-right overlay
    ======================================== */
