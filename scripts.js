@@ -18,18 +18,20 @@ map.addControl(new mapboxgl.NavigationControl(), 'top-right');
 // STATE VARIABLES
 // ========================================
 let activeYear = "2025";
-let activeCity = "NEWARK CITY";
-let popup = null;
 
 // --- Deep-link: read ?city= URL parameter from county map ---
-(function() {
-    const param = new URLSearchParams(window.location.search).get('city');
-    const validCities = ["NEWARK CITY","ELIZABETH CITY","CAMDEN CITY","TRENTON CITY",
-                         "JERSEY CITY","PATERSON CITY","ASBURY PARK CITY","ATLANTIC CITY"];
-    if (param && validCities.includes(param)) {
-        activeCity = param;
-    }
-})();
+const _urlCityParam = new URLSearchParams(window.location.search).get('city');
+const _validCities = ["NEWARK CITY","ELIZABETH CITY","CAMDEN CITY","TRENTON CITY",
+                      "JERSEY CITY","PATERSON CITY","ASBURY PARK CITY","ATLANTIC CITY"];
+let activeCity = (_urlCityParam && _validCities.includes(_urlCityParam))
+    ? _urlCityParam
+    : "NEWARK CITY";
+
+// Sync dropdown immediately (script runs after DOM, so element is available)
+const _selectEl = document.getElementById('municipality-select');
+if (_selectEl) _selectEl.value = activeCity;
+
+let popup = null;
 
 // Boundary bounds cache - stores precomputed map bounds for each municipality
 const boundaryBoundsByMun = {};
@@ -649,10 +651,6 @@ map.on('load', () => {
     loadLayers();
   };
   
-  // ---- Sync dropdown to activeCity (may be set via URL param) ----
-  const selectEl = document.getElementById('municipality-select');
-  if (selectEl) selectEl.value = activeCity;
-
   // ---- Load CSV totals, then initial state ----
   loadMunicipalityTotals().then(() => {
     loadLayers();
