@@ -53,7 +53,7 @@ const colors = {
 const assetLabels = {
   AIRPORT: "Aviation Facilities",
   HOSPITAL: "Hospitals",
-  KCS: "Known Contaminated Sites",
+  KCS: "Contaminated Sites",
   LIBRARY: "Libraries",
   PARK: "Parks",
   POWERPLANT: "Power Plants",
