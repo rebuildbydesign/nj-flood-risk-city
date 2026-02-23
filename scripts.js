@@ -7,7 +7,12 @@ const map = new mapboxgl.Map({
   container: 'map',
   style: 'mapbox://styles/j00by/cml8tkndp003e01qofxow4fbd',
   center: [-74.1724, 40.7357], // Newark default
-  zoom: 12
+  zoom: 12,
+  maxBounds: [
+    [-76.2, 38.5],   // SW corner (wider view of NJ)
+    [-73.2, 41.8]    // NE corner (wider view of NJ)
+  ],
+  minZoom: 6.5
 });
 
 // Add navigation controls (zoom, rotate, pitch)
@@ -18,6 +23,8 @@ map.addControl(new mapboxgl.NavigationControl(), 'top-right');
 // STATE VARIABLES
 // ========================================
 let activeYear = "2025";
+let show2025 = true;
+let show2050 = false;
 
 // --- Deep-link: read ?city= URL parameter from county map ---
 const _urlCityParam = new URLSearchParams(window.location.search).get('city');
@@ -41,6 +48,22 @@ let municipalityLabel = null;
 
 // Track which asset types are toggled off
 const hiddenAssetTypes = new Set();
+
+// Blue Acres layer visibility
+let blueAcresVisible = false;
+
+// Map Blue Acres municipality names to app city keys
+const blueAcresMunMap = {
+  "Newark City": "NEWARK CITY",
+  "Paterson City": "PATERSON CITY"
+};
+
+// Pre-cached Blue Acres parcel counts by municipality (from GeoJSON)
+const blueAcresCounts = {
+  "Newark City": 6,
+  "Paterson City": 24
+};
+const blueAcresTotalCount = 1677;
 
 // ========================================
 // ASSET COLORS - Map data types to colors
@@ -195,23 +218,19 @@ function loadMunicipalityTotals() {
 // Toggle between 2025 and 2050 scenarios
 // ========================================
 function loadLayers() {
-  const assetId = `assets_${activeYear}`;
-
-  // Hide all layers first
-  ["floodplain_2025", "floodplain_2050", "assets_2025", "assets_2050"].forEach(id => {
+  // Hide all asset layers first
+  ["assets_2025", "assets_2050"].forEach(id => {
     if (map.getLayer(id)) {
       map.setLayoutProperty(id, 'visibility', 'none');
     }
   });
 
-  // Show floodplain layers:
-  // - 2025 selected: only 2025 floodplain
-  // - 2050 selected: both floodplains (2050 underneath, 2025 on top to show overlap)
-  if (activeYear === '2050') {
-    map.setLayoutProperty('floodplain_2050', 'visibility', 'visible');
-    map.setLayoutProperty('floodplain_2025', 'visibility', 'visible');
-  } else {
-    map.setLayoutProperty('floodplain_2025', 'visibility', 'visible');
+  // Show/hide floodplain layers based on toggle state
+  if (map.getLayer('floodplain_2025')) {
+    map.setLayoutProperty('floodplain_2025', 'visibility', show2025 ? 'visible' : 'none');
+  }
+  if (map.getLayer('floodplain_2050')) {
+    map.setLayoutProperty('floodplain_2050', 'visibility', show2050 ? 'visible' : 'none');
   }
 
   // Filter floodplain layers to active municipality only
@@ -221,8 +240,17 @@ function loadLayers() {
     }
   });
 
-  // Show active year asset layer
-  map.setLayoutProperty(assetId, 'visibility', 'visible');
+  // Determine which asset layer to show based on active floodplain toggles
+  // Priority: if 2050 is on, show 2050 assets (superset); else show 2025 assets
+  if (show2050) {
+    activeYear = '2050';
+  } else if (show2025) {
+    activeYear = '2025';
+  }
+  const visibleAssetId = `assets_${activeYear}`;
+
+  // Show active asset layer (unless Blue Acres is on)
+  map.setLayoutProperty(visibleAssetId, 'visibility', blueAcresVisible ? 'none' : 'visible');
 
   // Filter to active municipality (respecting hidden asset types)
   map.setFilter('boundary', ['==', ['get', 'MUN'], activeCity]);
@@ -232,7 +260,7 @@ function loadLayers() {
   hiddenAssetTypes.forEach(type => {
     assetFilters.push(['!=', ['get', 'ASSET'], type]);
   });
-  map.setFilter(assetId, assetFilters);
+  map.setFilter(visibleAssetId, assetFilters);
 
   // Update legend after map finishes rendering
   map.once('idle', () => updateLegend());
@@ -556,7 +584,8 @@ map.on('load', () => {
       type: 'fill',
       source: `floodplain_${year}`,
       paint: {
-        'fill-color': year === '2025' ? '#a5d5f1' : '#3a7fc3'
+        'fill-color': year === '2025' ? '#a5d5f1' : '#3a7fc3',
+        'fill-opacity': 1
       },
       layout: { visibility: year === '2025' ? 'visible' : 'none' }
     });
@@ -600,6 +629,138 @@ map.on('load', () => {
     });
   });
   
+  // ---- Add Blue Acres polygon fill layer (between floodplains and assets) ----
+  map.addSource('blueacres', {
+    type: 'geojson',
+    data: 'data/blueacres.geojson'
+  });
+
+  // Insert before asset layers so assets render on top
+  // Using teal (#0d9488 / #14b8a6) to distinguish from Parks green (#3FB950)
+  map.addLayer({
+    id: 'blueacres-fill',
+    type: 'fill',
+    source: 'blueacres',
+    paint: {
+      'fill-color': '#0d9488',
+      'fill-opacity': 0.45
+    },
+    layout: { visibility: 'none' }
+  }, 'assets_2050');  // Insert before assets
+
+  map.addLayer({
+    id: 'blueacres-outline',
+    type: 'line',
+    source: 'blueacres',
+    paint: {
+      'line-color': '#0f766e',
+      'line-width': 1.5,
+      'line-opacity': 0.7
+    },
+    layout: { visibility: 'none' }
+  }, 'assets_2050');  // Insert before assets
+
+  // ---- Add Blue Acres clustered centroid layers (on top of everything) ----
+  map.addSource('blueacres-centroids', {
+    type: 'geojson',
+    data: 'data/blueacres_centroids.geojson',
+    cluster: true,
+    clusterMaxZoom: 13,   // clusters dissolve at zoom 14+ (polygons take over)
+    clusterRadius: 60
+  });
+
+  // Cluster circles — sized by point count
+  map.addLayer({
+    id: 'blueacres-clusters',
+    type: 'circle',
+    source: 'blueacres-centroids',
+    filter: ['has', 'point_count'],
+    paint: {
+      'circle-color': '#0d9488',
+      'circle-radius': [
+        'step', ['get', 'point_count'],
+        16,    // default radius
+        10, 20,
+        50, 26,
+        100, 32,
+        300, 38
+      ],
+      'circle-stroke-color': '#ffffff',
+      'circle-stroke-width': 2,
+      'circle-opacity': 0.9
+    },
+    layout: { visibility: 'none' }
+  });
+
+  // Cluster count labels
+  map.addLayer({
+    id: 'blueacres-cluster-count',
+    type: 'symbol',
+    source: 'blueacres-centroids',
+    filter: ['has', 'point_count'],
+    layout: {
+      'text-field': ['get', 'point_count_abbreviated'],
+      'text-font': ['DIN Pro Medium', 'Arial Unicode MS Bold'],
+      'text-size': 13,
+      'text-allow-overlap': true,
+      visibility: 'none'
+    },
+    paint: {
+      'text-color': '#ffffff'
+    }
+  });
+
+  // (No unclustered point layer — polygons handle individual parcels at high zoom)
+
+  // ---- Click cluster to zoom in ----
+  map.on('click', 'blueacres-clusters', e => {
+    const features = map.queryRenderedFeatures(e.point, { layers: ['blueacres-clusters'] });
+    const clusterId = features[0].properties.cluster_id;
+    map.getSource('blueacres-centroids').getClusterExpansionZoom(clusterId, (err, zoom) => {
+      if (err) return;
+      map.easeTo({
+        center: features[0].geometry.coordinates,
+        zoom: zoom
+      });
+    });
+  });
+
+  map.on('mouseenter', 'blueacres-clusters', () => {
+    map.getCanvas().style.cursor = 'pointer';
+  });
+  map.on('mouseleave', 'blueacres-clusters', () => {
+    map.getCanvas().style.cursor = '';
+  });
+
+  // ---- Blue Acres hover popup ----
+  map.on('mouseenter', 'blueacres-fill', () => {
+    map.getCanvas().style.cursor = 'pointer';
+  });
+  map.on('mouseleave', 'blueacres-fill', () => {
+    map.getCanvas().style.cursor = '';
+    if (popup) popup.remove();
+  });
+
+  map.on('mousemove', 'blueacres-fill', e => {
+    if (!e.features.length) return;
+    const f = e.features[0];
+    const name = f.properties.NAME_LABEL || f.properties.FEE_SIMPLE || 'Blue Acres Parcel';
+    const use = f.properties.USE_LABEL || '';
+    const acres = f.properties.GISACRES ? parseFloat(f.properties.GISACRES).toFixed(2) : '';
+    const date = f.properties.PRESERVATI || '';
+    const muni = f.properties.MUNICIPALI || '';
+
+    if (popup) popup.remove();
+    popup = new mapboxgl.Popup({ closeButton: false, offset: 10 })
+      .setLngLat(e.lngLat)
+      .setHTML(`
+        <strong style="color:#0d9488">\u{1F33F} ${name}</strong><br/>
+        ${muni}${use ? ' · ' + use : ''}<br/>
+        ${acres ? acres + ' acres' : ''}${date ? ' · Preserved ' + date : ''}
+      `)
+      .addTo(map);
+  });
+
   // ---- Hover popup on asset points ----
   map.on('mousemove', e => {
     // FIXED: Add proper array syntax
@@ -634,28 +795,133 @@ map.on('load', () => {
     loadLayers();
     zoomToMunicipality(activeCity);
     updateMunicipalityLabel();
+    if (blueAcresVisible) {
+      updateBlueAcresHighlight();
+      updateBlueAcresStats();
+    }
   });
   
-  // ---- Year toggle button events ----
+  // ---- Year toggle button events (independent on/off) ----
   document.getElementById('toggle-2025').onclick = () => {
-    activeYear = '2025';
-    document.getElementById('toggle-2025').classList.add('active');
-    document.getElementById('toggle-2050').classList.remove('active');
+    show2025 = !show2025;
+    document.getElementById('toggle-2025').classList.toggle('active', show2025);
     loadLayers();
   };
-  
+
   document.getElementById('toggle-2050').onclick = () => {
-    activeYear = '2050';
-    document.getElementById('toggle-2050').classList.add('active');
-    document.getElementById('toggle-2025').classList.remove('active');
+    show2050 = !show2050;
+    document.getElementById('toggle-2050').classList.toggle('active', show2050);
     loadLayers();
   };
   
+  // ---- Blue Acres toggle event ----
+  document.getElementById('toggle-blue-acres').addEventListener('change', e => {
+    blueAcresVisible = e.target.checked;
+    const vis = blueAcresVisible ? 'visible' : 'none';
+    const assetVis = blueAcresVisible ? 'none' : 'visible';
+
+    // Show/hide Blue Acres layers
+    ['blueacres-fill', 'blueacres-outline', 'blueacres-clusters', 'blueacres-cluster-count'].forEach(id => {
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
+    });
+
+    // Hide/show asset point layers (mutually exclusive with Blue Acres)
+    if (map.getLayer(`assets_${activeYear}`)) {
+      map.setLayoutProperty(`assets_${activeYear}`, 'visibility', assetVis);
+    }
+
+    if (blueAcresVisible) {
+      updateBlueAcresHighlight();
+    }
+    updateBlueAcresStats();
+  });
+
   // ---- Load CSV totals, then initial state ----
   loadMunicipalityTotals().then(() => {
     loadLayers();
   });
 });
+
+// ========================================
+// BLUE ACRES HIGHLIGHT
+// Updates fill opacity to emphasize parcels in active city
+// ========================================
+function updateBlueAcresHighlight() {
+  if (!map.getLayer('blueacres-fill')) return;
+
+  // Find the Blue Acres municipality name that matches the active city
+  const matchingBaMun = Object.entries(blueAcresMunMap)
+    .find(([_, appKey]) => appKey === activeCity);
+  const baMunName = matchingBaMun ? matchingBaMun[0] : null;
+
+  // Bright teal for parcels in the active city, muted for others
+  map.setPaintProperty('blueacres-fill', 'fill-opacity', [
+    'case',
+    baMunName
+      ? ['==', ['get', 'MUNICIPALI'], baMunName]
+      : ['literal', false],
+    0.65,  // highlighted
+    0.25   // muted
+  ]);
+
+  map.setPaintProperty('blueacres-fill', 'fill-color', [
+    'case',
+    baMunName
+      ? ['==', ['get', 'MUNICIPALI'], baMunName]
+      : ['literal', false],
+    '#0d9488',  // bright teal
+    '#5eead4'   // lighter muted teal
+  ]);
+
+  map.setPaintProperty('blueacres-outline', 'line-opacity', [
+    'case',
+    baMunName
+      ? ['==', ['get', 'MUNICIPALI'], baMunName]
+      : ['literal', false],
+    0.9,
+    0.3
+  ]);
+}
+
+// ========================================
+// BLUE ACRES STATS
+// Shows parcel count for active city vs statewide
+// ========================================
+function updateBlueAcresStats() {
+  const statsEl = document.getElementById('blue-acres-stats');
+  if (!statsEl) return;
+
+  if (!blueAcresVisible) {
+    statsEl.classList.add('hidden');
+    return;
+  }
+
+  statsEl.classList.remove('hidden');
+
+  // Use pre-cached counts (querySourceFeatures is viewport-dependent and unreliable)
+  const total = blueAcresTotalCount;
+
+  // Find matching Blue Acres municipality name for active city
+  const matchingBaMun = Object.entries(blueAcresMunMap)
+    .find(([_, appKey]) => appKey === activeCity);
+  const baMunName = matchingBaMun ? matchingBaMun[0] : null;
+  const cityCount = baMunName ? (blueAcresCounts[baMunName] || 0) : 0;
+
+  const cityDisplayName = municipalityLabels[activeCity] || activeCity;
+
+  if (cityCount > 0) {
+    statsEl.innerHTML = `
+      <span class="stat-highlight">${total.toLocaleString()}</span> parcels acquired statewide.
+      <span class="stat-city">${cityDisplayName}</span> has
+      <span class="stat-highlight">${cityCount}</span> Blue Acres parcel${cityCount !== 1 ? 's' : ''} (highlighted).
+    `;
+  } else {
+    statsEl.innerHTML = `
+      <span class="stat-highlight">${total.toLocaleString()}</span> parcels acquired statewide.
+      <span class="stat-city">${cityDisplayName}</span> has no Blue Acres parcels yet.
+    `;
+  }
+}
 
 // ========================================
 // CSV DOWNLOAD FUNCTIONALITY

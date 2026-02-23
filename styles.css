@@ -17,15 +17,21 @@ method-strong {
 /* Back link to county map */
 .back-to-county {
   display: inline-block;
-  color: #6b7280;
-  font-size: 0.78em;
+  color: #ade4fa;
+  font-size: 0.82em;
+  font-weight: 600;
   text-decoration: none;
   letter-spacing: 0.03em;
   margin-bottom: 10px;
-  transition: color 0.15s ease;
+  padding: 4px 8px;
+  border: 1px solid rgba(173, 228, 250, 0.3);
+  border-radius: 3px;
+  transition: all 0.2s ease;
 }
 .back-to-county:hover {
-  color: #dd4000;
+  color: #fff;
+  border-color: #ade4fa;
+  background: rgba(173, 228, 250, 0.1);
 }
 
 /* ========================================
@@ -418,17 +424,14 @@ label {
 /* Toggle hint */
 .card-toggle-hint {
   font-size: 0.78em;
-  color: #c7c9cd;
+  color: #f7c320;
   text-align: center;
-  margin: 2px 0 6px;
+  margin: 4px 0 8px;
   font-style: italic;
-  animation: hintFade 4s ease-in-out forwards;
-}
-
-@keyframes hintFade {
-  0% { opacity: 1; }
-  70% { opacity: 1; }
-  100% { opacity: 0.45; }
+  font-weight: 500;
+  padding: 4px 8px;
+  background: rgba(247, 195, 32, 0.1);
+  border-radius: 3px;
 }
 
 /* Card container */
@@ -551,6 +554,97 @@ label {
   white-space: nowrap;
   pointer-events: none;
   text-transform: uppercase;
+}
+
+/* ========================================
+   STEP 4 - Blue Acres Buyouts
+   ======================================== */
+#blue-acres-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #333;
+}
+
+/* Toggle switch */
+.toggle-switch-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  margin: 10px 0;
+  padding: 10px 12px;
+  background: #1a1a1a;
+  border: 2px solid #333;
+  border-radius: 4px;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+  font-weight: normal;
+}
+
+.toggle-switch-label:hover {
+  border-color: #14b8a6;
+  background: #1a2a2a;
+}
+
+.toggle-text {
+  font-size: 0.86em;
+  color: #d1d5db;
+  font-weight: 500;
+}
+
+.toggle-slider {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  background: #4b5563;
+  border-radius: 12px;
+  flex-shrink: 0;
+  transition: background-color 0.3s ease;
+}
+
+.toggle-slider::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.3s ease;
+}
+
+#toggle-blue-acres:checked + .toggle-slider {
+  background: #0d9488;
+}
+
+#toggle-blue-acres:checked + .toggle-slider::after {
+  transform: translateX(20px);
+}
+
+#toggle-blue-acres {
+  display: none;
+}
+
+/* Blue Acres stats box */
+.blue-acres-stats {
+  font-size: 0.82em;
+  color: #d1d5db;
+  line-height: 1.5;
+  padding: 8px 10px;
+  background: rgba(13, 148, 136, 0.08);
+  border-left: 3px solid #0d9488;
+  border-radius: 0 4px 4px 0;
+  margin-top: 6px;
+}
+
+.blue-acres-stats .stat-highlight {
+  color: #2dd4bf;
+  font-weight: 600;
+}
+
+.blue-acres-stats .stat-city {
+  color: #fbbf24;
+  font-weight: 600;
 }
 
 /* ========================================
@@ -751,6 +845,40 @@ label {
   .card-bar-count {
     font-size: 0.55em;
     width: 40px;
+  }
+
+  /* Blue Acres section - mobile */
+  #blue-acres-section {
+    margin-top: 8px;
+    padding-top: 8px;
+  }
+
+  .toggle-switch-label {
+    padding: 7px 9px;
+    margin: 6px 0;
+  }
+
+  .toggle-text {
+    font-size: 0.64em;
+  }
+
+  .toggle-slider {
+    width: 36px;
+    height: 20px;
+  }
+
+  .toggle-slider::after {
+    width: 14px;
+    height: 14px;
+  }
+
+  #toggle-blue-acres:checked + .toggle-slider::after {
+    transform: translateX(16px);
+  }
+
+  .blue-acres-stats {
+    font-size: 0.6em;
+    padding: 6px 8px;
   }
 
   /* Download button */
