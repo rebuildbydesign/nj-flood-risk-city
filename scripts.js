@@ -1053,3 +1053,30 @@ methodologyPopup.addEventListener('click', e => {
   }
 });
 
+// ========================================
+// FLOATING TOOLTIP - positioned over map on hover
+// ========================================
+const floatingTooltip = document.getElementById('floating-tooltip');
+
+document.querySelectorAll('.tooltip-wrap').forEach(wrap => {
+  const tipText = wrap.querySelector('.tooltip')?.textContent || '';
+
+  wrap.addEventListener('mouseenter', () => {
+    const rect = wrap.getBoundingClientRect();
+    floatingTooltip.textContent = tipText;
+
+    // Position to the right of the button, vertically centered
+    const left = rect.right + 12;
+    const top = rect.top + rect.height / 2;
+
+    floatingTooltip.style.left = left + 'px';
+    floatingTooltip.style.top = top + 'px';
+    floatingTooltip.style.transform = 'translateY(-50%)';
+    floatingTooltip.classList.add('visible');
+  });
+
+  wrap.addEventListener('mouseleave', () => {
+    floatingTooltip.classList.remove('visible');
+  });
+});
+
