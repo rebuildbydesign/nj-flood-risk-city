@@ -497,7 +497,7 @@ label {
   font-weight: 600;
   padding: 8px 10px;
   background: #f7c320;
-  border-radius: 4px;
+  border-radius: 0px;
   letter-spacing: 0.02em;
 }
 
@@ -513,7 +513,7 @@ label {
   background: #f9fafb;
   border: 1px solid #e5e7eb;
   border-left: 6px solid #999;
-  border-radius: 0 4px 4px 0;
+  border-radius: 0 0px 0px 0;
   padding: 8px 10px;
   cursor: pointer;
   transition: opacity 0.25s ease, transform 0.15s ease;
