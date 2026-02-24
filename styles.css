@@ -510,10 +510,10 @@ label {
 
 /* Individual asset card */
 .asset-card {
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-left: 6px solid #999;
-  border-radius: 0 0px 0px 0;
+  background: #2a2a2a;
+  border: 1px solid #3a3a3a;
+  border-left: 6px solid #5a5a5a;
+  border-radius: 0 4px 4px 0;
   padding: 8px 10px;
   cursor: pointer;
   transition: opacity 0.25s ease, transform 0.15s ease;
@@ -522,7 +522,7 @@ label {
 
 .asset-card:hover {
   transform: translateX(2px);
-  background: #f0f1f3;
+  background: #333333;
 }
 
 .asset-card-off {
@@ -549,7 +549,7 @@ label {
 .card-title {
   font-size: 0.86em;
   font-weight: 600;
-  color: #111827;
+  color: #e0e0e0;
   letter-spacing: 0.2px;
 }
 
@@ -568,7 +568,7 @@ label {
 
 .card-bar-label {
   font-size: 0.69em;
-  color: #6b7280;
+  color: #888888;
   width: 24px;
   flex-shrink: 0;
   text-align: right;
@@ -578,7 +578,7 @@ label {
 .card-bar-track {
   flex: 1;
   height: 10px;
-  background: #e5e7eb;
+  background: #3a3a3a;
   border-radius: 2px;
   overflow: hidden;
 }
@@ -600,11 +600,10 @@ label {
 
 .card-bar-count {
   font-size: 0.75em;
-  color: #374151;
+  color: #b0b0b0;
   width: 46px;
   flex-shrink: 0;
   text-align: right;
-  font-weight: 500;
   font-weight: 600;
 }
 
