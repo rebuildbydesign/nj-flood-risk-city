@@ -110,9 +110,9 @@ const assetEmojis = {
   PARK: "\uD83C\uDF33",
   POWERPLANT: "\u26A1",
   SCHOOL: "\uD83C\uDFEB",
-  SOLIDHAZARD: "\u2623\uFE0F",
+  SOLIDHAZARD: "\uD83E\uDDEA",
   SOLIDWASTE: "\uD83D\uDDD1\uFE0F",
-  SUPERFUND: "\u2622\uFE0F",
+  SUPERFUND: "\uD83D\uDED1",
   WASTEWATER: "\uD83D\uDEB0"
 };
 
@@ -355,15 +355,19 @@ function updateLegend() {
     // Build legend (cards only — findings are on the map)
     legend.innerHTML = `
       <h3>Step 3: Explore Exposed Assets</h3>
-      <p class="card-toggle-hint">Click a card to show/hide that asset on the map</p>
+      <p class="card-toggle-hint">Click a card to show/hide asset type</p>
       <div class="card-container"></div>
     `;
 
     const container = legend.querySelector('.card-container');
 
-    // Sort by 2050 count descending (most at-risk first)
+    // Sort by 2050 exposure percentage descending (highest risk first)
     const sortedTypes = [...allTypes].sort((a, b) => {
-      return (counts2050[b] || 0) - (counts2050[a] || 0);
+      const totalA = munTotals[a] || Math.max(counts2025[a] || 0, counts2050[a] || 0) || 1;
+      const totalB = munTotals[b] || Math.max(counts2025[b] || 0, counts2050[b] || 0) || 1;
+      const pctA = (counts2050[a] || 0) / totalA;
+      const pctB = (counts2050[b] || 0) / totalB;
+      return pctB - pctA;
     });
 
     sortedTypes.forEach(type => {
