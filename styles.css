@@ -287,10 +287,12 @@ label {
 }
 
 /* ========================================
-   STEP 2 - Scenario Toggle Buttons
+   STEP 2 - Flood Risk & Solutions
    ======================================== */
+
+/* Scenario Toggle Buttons */
 .button-group {
-  margin-bottom: 20px;
+  margin-bottom: 10px;
 }
 
 .button-group button {
@@ -345,6 +347,76 @@ label {
   background-color: #3272b3;
   border-color: #275e9a;
   transform: translateY(-1px);
+}
+
+/* Blue Acres button active = teal to match parcels */
+#toggle-blue-acres.active {
+  background-color: #0d9488;
+  border-color: #0f766e;
+  font-weight: bold;
+  color: #fff;
+  box-shadow: 0 4px 8px rgba(13, 148, 136, 0.4);
+}
+
+#toggle-blue-acres.active:hover {
+  background-color: #0b7c72;
+  border-color: #0a6b62;
+  transform: translateY(-1px);
+}
+
+/* ========================================
+   CUSTOM TOOLTIPS
+   ======================================== */
+.tooltip-wrap {
+  position: relative;
+}
+
+.tooltip-wrap .tooltip {
+  visibility: hidden;
+  opacity: 0;
+  position: absolute;
+  left: calc(100% + 12px);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 220px;
+  background: #1a1a1a;
+  color: #e5e7eb;
+  font-size: 0.78em;
+  font-weight: 400;
+  line-height: 1.45;
+  padding: 10px 12px;
+  border: 1px solid #444;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  z-index: 100;
+  pointer-events: none;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+/* Arrow pointing left */
+.tooltip-wrap .tooltip::before {
+  content: '';
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 6px solid transparent;
+  border-right-color: #444;
+}
+
+.tooltip-wrap .tooltip::after {
+  content: '';
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 5px solid transparent;
+  border-right-color: #1a1a1a;
+}
+
+.tooltip-wrap:hover .tooltip {
+  visibility: visible;
+  opacity: 1;
 }
 
 /* ========================================
@@ -423,15 +495,15 @@ label {
 
 /* Toggle hint */
 .card-toggle-hint {
-  font-size: 0.78em;
-  color: #f7c320;
+  font-size: 0.8em;
+  color: #000;
   text-align: center;
-  margin: 4px 0 8px;
-  font-style: italic;
-  font-weight: 500;
-  padding: 4px 8px;
-  background: rgba(247, 195, 32, 0.1);
-  border-radius: 3px;
+  margin: 0 0 10px;
+  font-weight: 600;
+  padding: 8px 10px;
+  background: #f7c320;
+  border-radius: 4px;
+  letter-spacing: 0.02em;
 }
 
 /* Card container */
@@ -541,88 +613,96 @@ label {
   font-weight: 600;
 }
 
-/* Municipality Label on Map */
-.municipality-map-label {
+/* ========================================
+   MAP HUD - City label + findings (fixed)
+   ======================================== */
+.map-hud {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.map-hud-city {
   font-family: Arial, sans-serif;
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 700;
   color: #fff;
   background: rgba(0, 0, 0, 0.65);
-  padding: 4px 10px;
-  border-radius: 3px;
-  letter-spacing: 0.5px;
+  padding: 5px 16px;
+  border-radius: 4px;
+  letter-spacing: 0.6px;
   white-space: nowrap;
-  pointer-events: none;
   text-transform: uppercase;
 }
 
-/* ========================================
-   STEP 4 - Blue Acres Buyouts
-   ======================================== */
-#blue-acres-section {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid #333;
+.map-hud-findings {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  padding: 7px 14px;
+  border-radius: 4px;
 }
 
-/* Toggle switch */
-.toggle-switch-label {
+/* Hide when empty (before data loads) */
+.map-hud-findings:empty {
+  display: none;
+}
+
+.findings-total {
+  font-size: 14px;
+  font-weight: 600;
+  color: #f7c320;
+  letter-spacing: 0.02em;
+}
+
+.findings-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  cursor: pointer;
-  margin: 10px 0;
-  padding: 10px 12px;
-  background: #1a1a1a;
-  border: 2px solid #333;
-  border-radius: 4px;
-  transition: border-color 0.2s ease, background-color 0.2s ease;
-  font-weight: normal;
+  gap: 5px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
-.toggle-switch-label:hover {
-  border-color: #14b8a6;
-  background: #1a2a2a;
-}
-
-.toggle-text {
-  font-size: 0.86em;
-  color: #d1d5db;
+.findings-chip {
+  font-size: 12.5px;
   font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 3px;
+  white-space: nowrap;
+  line-height: 1.3;
 }
 
-.toggle-slider {
-  position: relative;
-  width: 44px;
-  height: 24px;
-  background: #4b5563;
-  border-radius: 12px;
-  flex-shrink: 0;
-  transition: background-color 0.3s ease;
+.findings-chip em {
+  font-style: normal;
+  opacity: 0.7;
 }
 
-.toggle-slider::after {
-  content: '';
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 18px;
-  height: 18px;
-  background: #fff;
-  border-radius: 50%;
-  transition: transform 0.3s ease;
+.chip-2025 {
+  background: rgba(165, 213, 241, 0.2);
+  color: #c4e4f7;
+  border: 1px solid rgba(165, 213, 241, 0.35);
 }
 
-#toggle-blue-acres:checked + .toggle-slider {
-  background: #0d9488;
+.chip-2050 {
+  background: rgba(58, 127, 195, 0.25);
+  color: #a3cef0;
+  border: 1px solid rgba(58, 127, 195, 0.4);
 }
 
-#toggle-blue-acres:checked + .toggle-slider::after {
-  transform: translateX(20px);
-}
-
-#toggle-blue-acres {
-  display: none;
+.findings-arrow {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.4);
 }
 
 /* Blue Acres stats box */
@@ -727,10 +807,31 @@ label {
     max-width: 50px;
   }
 
-  /* Municipality label on map */
-  .municipality-map-label {
-    font-size: 12px;
-    padding: 3px 7px;
+  /* Map HUD - mobile */
+  .map-hud {
+    top: 8px;
+  }
+
+  .map-hud-city {
+    font-size: 13px;
+    padding: 3px 10px;
+  }
+
+  .map-hud-findings {
+    padding: 5px 9px;
+  }
+
+  .findings-total {
+    font-size: 10px;
+  }
+
+  .findings-chip {
+    font-size: 9px;
+    padding: 2px 5px;
+  }
+
+  .findings-arrow {
+    font-size: 9px;
   }
 
   /* Compact header */
@@ -771,7 +872,7 @@ label {
     margin-bottom: 8px;
   }
 
-  /* Scenario buttons - much more compact */
+  /* Scenario buttons - compact */
   .button-group {
     margin-bottom: 10px;
   }
@@ -779,16 +880,22 @@ label {
   .button-group button {
     padding: 8px 10px;
     font-size: 0.78em;
-    /* ~11px */
     min-height: auto;
     margin-bottom: 6px;
   }
 
-  .button-subtext {
-    font-size: 0.7em;
-    /* ~8px */
-    margin-top: 3px;
-    line-height: 1.2;
+  /* Tooltips - below on mobile instead of right */
+  .tooltip-wrap .tooltip {
+    left: 0;
+    top: 100%;
+    transform: none;
+    width: 100%;
+    margin-top: 4px;
+  }
+
+  .tooltip-wrap .tooltip::before,
+  .tooltip-wrap .tooltip::after {
+    display: none;
   }
 
   /* Legend - compact */
@@ -845,35 +952,6 @@ label {
   .card-bar-count {
     font-size: 0.55em;
     width: 40px;
-  }
-
-  /* Blue Acres section - mobile */
-  #blue-acres-section {
-    margin-top: 8px;
-    padding-top: 8px;
-  }
-
-  .toggle-switch-label {
-    padding: 7px 9px;
-    margin: 6px 0;
-  }
-
-  .toggle-text {
-    font-size: 0.64em;
-  }
-
-  .toggle-slider {
-    width: 36px;
-    height: 20px;
-  }
-
-  .toggle-slider::after {
-    width: 14px;
-    height: 14px;
-  }
-
-  #toggle-blue-acres:checked + .toggle-slider::after {
-    transform: translateX(16px);
   }
 
   .blue-acres-stats {

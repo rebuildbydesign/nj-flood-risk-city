@@ -5,7 +5,7 @@ mapboxgl.accessToken = 'pk.eyJ1IjoiajAwYnkiLCJhIjoiY2x1bHUzbXZnMGhuczJxcG83YXY4c
 
 const map = new mapboxgl.Map({
   container: 'map',
-  style: 'mapbox://styles/j00by/cml8tkndp003e01qofxow4fbd',
+  style: 'mapbox://styles/j00by/cmbqvtons000201qlgcox1gi5',
   center: [-74.1724, 40.7357], // Newark default
   zoom: 12,
   maxBounds: [
@@ -43,8 +43,8 @@ let popup = null;
 // Boundary bounds cache - stores precomputed map bounds for each municipality
 const boundaryBoundsByMun = {};
 
-// Municipality label marker on the map
-let municipalityLabel = null;
+// Municipality label (now a fixed HUD element, no marker needed)
+let municipalityLabel = null; // kept for compatibility
 
 // Track which asset types are toggled off
 const hiddenAssetTypes = new Set();
@@ -349,19 +349,13 @@ function updateLegend() {
     const pctRisk2025 = overallTotal > 0 ? ((total2025 / overallTotal) * 100).toFixed(1) : '0';
     const pctRisk2050 = overallTotal > 0 ? ((total2050 / overallTotal) * 100).toFixed(1) : '0';
 
-    // Build legend header
+    // Update on-map findings overlay
+    updateMapFindings(overallTotal, total2025, total2050, pctRisk2025, pctRisk2050);
+
+    // Build legend (cards only — findings are on the map)
     legend.innerHTML = `
-      <h3>Step 3: Exposure by Asset Type</h3>
-      <p class="legend-helper">
-        <strong>${cityDisplayName}</strong> has <strong>${overallTotal}</strong> public assets.
-        <strong>${pctRisk2025}%</strong> (${total2025}) at risk in 2025 \u2192
-        <strong>${pctRisk2050}%</strong> (${total2050}) by 2050.
-      </p>
-      <div class="bar-legend-key">
-        <span class="bar-key-item"><span class="bar-key-swatch bar-key-2025"></span>2025 Floodplain</span>
-        <span class="bar-key-item"><span class="bar-key-swatch bar-key-2050"></span>2050 Floodplain</span>
-      </div>
-      <p class="card-toggle-hint">Click any card to toggle its layer on/off the map</p>
+      <h3>Step 3: Explore Exposed Assets</h3>
+      <p class="card-toggle-hint">Click a card to show/hide that asset on the map</p>
       <div class="card-container"></div>
     `;
 
@@ -487,34 +481,33 @@ function zoomToMunicipality(munName) {
 
 
 // ========================================
-// MUNICIPALITY LABEL ON MAP
-// Places city name inside the boundary
+// MAP HUD - City name + findings overlay
+// Fixed position on the map container (not geo-positioned)
 // ========================================
 function updateMunicipalityLabel() {
-  // Remove existing label
-  if (municipalityLabel) {
-    municipalityLabel.remove();
-    municipalityLabel = null;
+  const el = document.getElementById('map-hud-city');
+  if (!el) return;
+  const cityDisplayName = municipalityLabels[activeCity] || activeCity;
+  el.textContent = cityDisplayName;
+}
+
+function updateMapFindings(overallTotal, total2025, total2050, pctRisk2025, pctRisk2050) {
+  const el = document.getElementById('map-findings');
+  if (!el) return;
+
+  if (overallTotal === 0) {
+    el.innerHTML = '';
+    return;
   }
 
-  const bounds = boundaryBoundsByMun[activeCity];
-  if (!bounds) return;
-
-  const cityDisplayName = municipalityLabels[activeCity] || activeCity;
-
-  // Position label at top-left area inside the boundary
-  const ne = bounds.getNorthEast();
-  const sw = bounds.getSouthWest();
-  const labelLng = sw.lng + (ne.lng - sw.lng) * 0.05;
-  const labelLat = ne.lat - (ne.lat - sw.lat) * 0.05;
-
-  const el = document.createElement('div');
-  el.className = 'municipality-map-label';
-  el.textContent = cityDisplayName;
-
-  municipalityLabel = new mapboxgl.Marker({ element: el, anchor: 'top-left' })
-    .setLngLat([labelLng, labelLat])
-    .addTo(map);
+  el.innerHTML = `
+    <span class="findings-total">${overallTotal} public assets</span>
+    <span class="findings-row">
+      <span class="findings-chip chip-2025">${total2025} at risk today <em>(${pctRisk2025}%)</em></span>
+      <span class="findings-arrow">\u2192</span>
+      <span class="findings-chip chip-2050">${total2050} by 2050 <em>(${pctRisk2050}%)</em></span>
+    </span>
+  `;
 }
 
 
@@ -535,7 +528,7 @@ map.on('load', () => {
     type: 'line',
     source: 'boundary',
     paint: {
-      'line-color': 'rgba(255, 0, 0, 0.6)',
+      'line-color': 'rgb(255, 0, 0)',
       'line-width': 3,
       'line-dasharray': [2, 2]
     },
@@ -814,9 +807,11 @@ map.on('load', () => {
     loadLayers();
   };
   
-  // ---- Blue Acres toggle event ----
-  document.getElementById('toggle-blue-acres').addEventListener('change', e => {
-    blueAcresVisible = e.target.checked;
+  // ---- Blue Acres button toggle event ----
+  document.getElementById('toggle-blue-acres').onclick = () => {
+    blueAcresVisible = !blueAcresVisible;
+    document.getElementById('toggle-blue-acres').classList.toggle('active', blueAcresVisible);
+
     const vis = blueAcresVisible ? 'visible' : 'none';
     const assetVis = blueAcresVisible ? 'none' : 'visible';
 
@@ -834,7 +829,7 @@ map.on('load', () => {
       updateBlueAcresHighlight();
     }
     updateBlueAcresStats();
-  });
+  };
 
   // ---- Load CSV totals, then initial state ----
   loadMunicipalityTotals().then(() => {

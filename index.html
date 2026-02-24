@@ -41,36 +41,31 @@
     </select>
   
     
-    <!-- Step 2: Scenario Toggle Buttons -->
+    <!-- Step 2: Toggle Floodplains & Buyouts -->
+    <h3>Step 2: Toggle Floodplains &amp; Buyouts</h3>
+    <p class="helper-text">Toggle layers on/off to explore flood risk and government response.</p>
     <div class="button-group">
-      <h3>Step 2: Compare Flood Risk Scenarios</h3>
-      <p class="helper-text">
-        Toggle between current and future 100-year floodplain and increased risk over time.
-      </p>
-      <button id="toggle-2025" class="active">Current Flood Risk (2025)</button>
-      <button id="toggle-2050">Future Flood Risk (2050)</button>
+      <div class="tooltip-wrap">
+        <button id="toggle-2025" class="active">Current Flood Risk (2025)</button>
+        <span class="tooltip">FEMA 100-year floodplain (1% annual chance flood). Enable both layers to compare how exposure grows over time.</span>
+      </div>
+      <div class="tooltip-wrap">
+        <button id="toggle-2050">Future Flood Risk (2050)</button>
+        <span class="tooltip">Projected 100-year floodplain + 3 ft. additional flood elevation, aligned with NJ's Inland Flood Protection Rule.</span>
+      </div>
+      <div class="tooltip-wrap">
+        <button id="toggle-blue-acres">Blue Acres Buyouts</button>
+        <span class="tooltip">NJ's Blue Acres program buys flood-prone properties and converts them to open space — a proven tool to reduce repetitive losses.</span>
+      </div>
     </div>
-    
+    <div id="blue-acres-stats" class="blue-acres-stats hidden"></div>
+
     <!-- Step 3: Legend (dynamically populated by scripts.js) -->
     <div id="legend">
       <h3>Step 3: Explore Exposed Assets</h3>
       <p class="legend-helper">
         Colored points represent public assets located within the selected floodplain.
       </p>
-    </div>
-    
-    <!-- Step 4: Blue Acres Buyout Layer -->
-    <div id="blue-acres-section">
-      <h3>Step 4: Blue Acres Buyouts</h3>
-      <p class="helper-text">
-        NJ's <strong>Blue Acres</strong> program buys flood-prone homes and returns the land to nature — a proven solution to reduce flood risk. Green parcels show properties already acquired statewide.
-      </p>
-      <label class="toggle-switch-label">
-        <span class="toggle-text">Show Blue Acres parcels</span>
-        <input type="checkbox" id="toggle-blue-acres" />
-        <span class="toggle-slider"></span>
-      </label>
-      <div id="blue-acres-stats" class="blue-acres-stats hidden"></div>
     </div>
 
     <!-- Download Section -->
@@ -115,7 +110,12 @@
       beyond a single point location. Assets were classified as exposed if their
       buffered area intersected either floodplain.
     </p>
-    
+
+    <h4>Blue Acres Program</h4>
+    <p>
+      New Jersey's <strong>Blue Acres</strong> program, administered by the Department of Environmental Protection, purchases flood-damaged and flood-prone properties and permanently converts them to open space. It is one of the most effective tools government has to reduce repetitive flood losses, lower future disaster costs, and protect communities. By removing vulnerable structures from the floodplain, Blue Acres restores natural flood storage, reduces risk for remaining residents, and demonstrates what proactive government intervention can look like at scale. Green parcels on the map represent properties already acquired statewide.
+    </p>
+
     <!-- Data Sources Section -->
     <ul class="data-sources">
       <li><strong>Aviation Facilities:</strong> <a href="https://share-open-data-njtpa.hub.arcgis.com/datasets/1551114f78e34d8395fd77bf41cd8a80_0/explore?location=40.500740%2C-74.295434%2C8" target="_blank" rel="noopener noreferrer">USDOT</a></li>
@@ -140,8 +140,14 @@
   <!-- ========================================
        MAP CONTAINER - Mapbox GL renders here
        ======================================== -->
-  <div id="map"></div>
-  
+  <div id="map">
+    <!-- City name + findings HUD (fixed position on map) -->
+    <div id="map-hud" class="map-hud">
+      <div class="map-hud-city" id="map-hud-city"></div>
+      <div class="map-hud-findings" id="map-findings"></div>
+    </div>
+  </div>
+
   <!-- Logo Overlay (top-left on map) -->
   <div class="map-logo">
     <img src="img/RBD-logo.png" alt="Rebuild by Design logo">
