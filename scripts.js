@@ -6,8 +6,8 @@ mapboxgl.accessToken = 'pk.eyJ1IjoiajAwYnkiLCJhIjoiY2x1bHUzbXZnMGhuczJxcG83YXY4c
 const map = new mapboxgl.Map({
   container: 'map',
   style: 'mapbox://styles/j00by/cmbqvtons000201qlgcox1gi5',
-  center: [-74.1724, 40.7357], // Newark default
-  zoom: 12,
+  center: [-74.4, 40.0], // NJ center — fitBounds takes over on load
+  zoom: 7,
   maxBounds: [
     [-76.2, 38.5],   // SW corner (wider view of NJ)
     [-73.2, 41.8]    // NE corner (wider view of NJ)
@@ -43,7 +43,7 @@ let popup = null;
 // Boundary bounds cache - stores precomputed map bounds for each municipality
 const boundaryBoundsByMun = {};
 
-// Municipality label (now a fixed HUD element, no marker needed)
+// Municipality label (now a finding card element)
 let municipalityLabel = null; // kept for compatibility
 
 // Track which asset types are toggled off
@@ -458,45 +458,50 @@ function applyAssetFilter() {
 function zoomToMunicipality(munName) {
   const bounds = boundaryBoundsByMun[munName];
   if (!bounds) return;
-  
+
   // Detect mobile
   const isMobile = window.innerWidth <= 768;
-  
+
+  // Cities that need extra zoom boost (geographically smaller or elongated)
+  const tightCities = ["NEWARK CITY","ELIZABETH CITY","TRENTON CITY",
+                       "PATERSON CITY","ASBURY PARK CITY","ATLANTIC CITY"];
+  const isTight = tightCities.includes(munName);
+
   map.stop();
   map.fitBounds(bounds, {
     padding: isMobile ? {
       top: 80,
-      bottom: window.innerHeight * 0.55, // Account for 50vh sidebar + toggle
+      bottom: window.innerHeight * 0.55,
       left: 20,
       right: 20
     } : {
-      top: 60,
-      bottom: 60,
-      left: 340,   // Account for sidebar width on desktop
-      right: 60
+      top: isTight ? 10 : 20,
+      bottom: isTight ? 10 : 20,
+      left: 320,
+      right: isTight ? 340 : 360
     },
-    offset: isMobile ? [0, 0] : [-50, 0],
+    offset: isMobile ? [0, 0] : [isTight ? -40 : -60, 0],
     duration: 2000,
     linear: false,
-    maxZoom: isMobile ? 12 : 14, // Lower max zoom on mobile for better overview
+    maxZoom: isMobile ? 12 : 18,
     essential: true
   });
 }
 
 
 // ========================================
-// MAP HUD - City name + findings overlay
-// Fixed position on the map container (not geo-positioned)
+// FINDING CARD - City name + key finding overlay
+// Matches county project's KEY FINDING card style
 // ========================================
 function updateMunicipalityLabel() {
-  const el = document.getElementById('map-hud-city');
+  const el = document.getElementById('finding-city-name');
   if (!el) return;
   const cityDisplayName = municipalityLabels[activeCity] || activeCity;
   el.textContent = cityDisplayName;
 }
 
 function updateMapFindings(overallTotal, total2025, total2050, pctRisk2025, pctRisk2050) {
-  const el = document.getElementById('map-findings');
+  const el = document.getElementById('finding-text');
   if (!el) return;
 
   if (overallTotal === 0) {
@@ -504,15 +509,22 @@ function updateMapFindings(overallTotal, total2025, total2050, pctRisk2025, pctR
     return;
   }
 
+  const cityDisplayName = municipalityLabels[activeCity] || activeCity;
+
+  // Narrative sentence form matching county project style
   el.innerHTML = `
-    <span class="findings-total">${overallTotal} public assets</span>
-    <span class="findings-row">
-      <span class="findings-chip chip-2025">${total2025} at risk today <em>(${pctRisk2025}%)</em></span>
-      <span class="findings-arrow">\u2192</span>
-      <span class="findings-chip chip-2050">${total2050} by 2050 <em>(${pctRisk2050}%)</em></span>
-    </span>
+    Of <strong>${overallTotal}</strong> public assets in ${cityDisplayName},
+    <strong>${total2025}</strong> are in the floodplain today &mdash;
+    <span class="finding-2050">rising to ${total2050} by 2050</span>
+    (${pctRisk2050}% of all assets).
   `;
 }
+
+// Finding card close button
+document.getElementById('finding-close')?.addEventListener('click', () => {
+  const card = document.getElementById('finding-card');
+  if (card) card.style.display = 'none';
+});
 
 
 // ========================================

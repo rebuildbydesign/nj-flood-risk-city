@@ -141,10 +141,12 @@
        MAP CONTAINER - Mapbox GL renders here
        ======================================== -->
   <div id="map">
-    <!-- City name + findings HUD (fixed position on map) -->
-    <div id="map-hud" class="map-hud">
-      <div class="map-hud-city" id="map-hud-city"></div>
-      <div class="map-hud-findings" id="map-findings"></div>
+    <!-- Finding Card Overlay (matches county project style) -->
+    <div id="finding-card">
+      <button id="finding-close" aria-label="Close finding">&times;</button>
+      <div class="finding-label">KEY FINDING</div>
+      <p class="finding-city-name" id="finding-city-name"></p>
+      <p class="finding-text" id="finding-text"></p>
     </div>
   </div>
 
