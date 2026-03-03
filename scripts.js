@@ -356,7 +356,14 @@ function updateLegend() {
     legend.innerHTML = `
       <h3>Step 3: Explore Exposed Assets</h3>
       <p class="card-toggle-hint">Click a card to show/hide asset type</p>
-      <div class="card-container"></div>
+      <div class="card-scroll-wrapper">
+        <div class="card-container"></div>
+        <div class="card-scroll-fade"></div>
+      </div>
+      <div class="scroll-hint-badge hidden">
+        <span class="hint-arrow">\u2193</span>
+        <span class="hint-text"></span>
+      </div>
     `;
 
     const container = legend.querySelector('.card-container');
@@ -426,6 +433,57 @@ function updateLegend() {
         }
         applyAssetFilter();
       });
+    });
+
+    // --- Scroll hint: fade gradient + "X more assets" badge ---
+    const scrollWrapper = legend.querySelector('.card-scroll-wrapper');
+    const fadeMask = legend.querySelector('.card-scroll-fade');
+    const hintBadge = legend.querySelector('.scroll-hint-badge');
+    const hintText = legend.querySelector('.hint-text');
+
+    function updateScrollHint() {
+      if (!scrollWrapper || !hintBadge) return;
+      const { scrollTop, scrollHeight, clientHeight } = scrollWrapper;
+      const isScrollable = scrollHeight > clientHeight + 4;
+      const isAtBottom = scrollTop + clientHeight >= scrollHeight - 8;
+
+      if (!isScrollable || isAtBottom) {
+        // Fully scrolled or not scrollable — hide hints
+        if (fadeMask) fadeMask.classList.add('hidden');
+        hintBadge.classList.add('hidden');
+      } else {
+        // Cards are clipped — count how many are below the fold
+        if (fadeMask) fadeMask.classList.remove('hidden');
+        const cards = container.querySelectorAll('.asset-card');
+        const wrapperBottom = scrollWrapper.getBoundingClientRect().bottom;
+        let belowCount = 0;
+        cards.forEach(c => {
+          if (c.getBoundingClientRect().top >= wrapperBottom - 10) belowCount++;
+        });
+        if (belowCount > 0 && hintText) {
+          hintText.textContent = belowCount + ' more asset' + (belowCount !== 1 ? 's' : '') + ' below';
+          hintBadge.classList.remove('hidden');
+        } else {
+          hintBadge.classList.add('hidden');
+        }
+      }
+    }
+
+    // Scroll the wrapper on badge click
+    if (hintBadge && scrollWrapper) {
+      hintBadge.addEventListener('click', () => {
+        scrollWrapper.scrollBy({ top: 140, behavior: 'smooth' });
+      });
+    }
+
+    // Listen for scroll events
+    if (scrollWrapper) {
+      scrollWrapper.addEventListener('scroll', updateScrollHint);
+    }
+
+    // Initial check after DOM settles
+    requestAnimationFrame(() => {
+      requestAnimationFrame(updateScrollHint);
     });
   });
 }

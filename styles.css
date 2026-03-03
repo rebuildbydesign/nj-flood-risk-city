@@ -62,6 +62,24 @@ method-strong {
   overflow-y: auto;
   box-shadow: 2px 0 5px rgba(0, 0, 0, 0.25);
   z-index: 2;
+  /* Always-visible thin scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: #555 #1a1a1a;
+}
+
+/* Webkit scrollbar (Chrome, Safari, Edge) */
+#sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+#sidebar::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+#sidebar::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 3px;
+}
+#sidebar::-webkit-scrollbar-thumb:hover {
+  background: #777;
 }
 
 #sidebar h2 {
@@ -501,6 +519,78 @@ label {
   letter-spacing: 0.02em;
 }
 
+/* Card scroll wrapper — contains cards + fade + hint */
+.card-scroll-wrapper {
+  position: relative;
+  max-height: 250px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #555 #2a2a2a;
+}
+.card-scroll-wrapper::-webkit-scrollbar {
+  width: 5px;
+}
+.card-scroll-wrapper::-webkit-scrollbar-track {
+  background: #2a2a2a;
+}
+.card-scroll-wrapper::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 3px;
+}
+.card-scroll-wrapper::-webkit-scrollbar-thumb:hover {
+  background: #777;
+}
+
+/* Fade gradient overlay at bottom of card list */
+.card-scroll-fade {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 48px;
+  background: linear-gradient(to bottom, transparent, #000 90%);
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  margin-top: -48px;
+  z-index: 1;
+}
+.card-scroll-fade.hidden {
+  opacity: 0;
+}
+
+/* "X more assets" badge */
+.scroll-hint-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px;
+  margin-top: 4px;
+  font-size: 0.76em;
+  font-weight: 600;
+  color: #f7c320;
+  background: rgba(247, 195, 32, 0.08);
+  border: 1px solid rgba(247, 195, 32, 0.2);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  letter-spacing: 0.02em;
+}
+.scroll-hint-badge:hover {
+  background: rgba(247, 195, 32, 0.15);
+  border-color: rgba(247, 195, 32, 0.4);
+}
+.scroll-hint-badge .hint-arrow {
+  animation: bounceDown 1.5s ease infinite;
+}
+@keyframes bounceDown {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(3px); }
+}
+.scroll-hint-badge.hidden {
+  display: none;
+}
+
 /* Card container */
 .card-container {
   display: flex;
@@ -868,6 +958,15 @@ label {
     font-size: 0.58em;
     margin-bottom: 6px;
     gap: 10px;
+  }
+
+  .card-scroll-wrapper {
+    max-height: 180px;
+  }
+
+  .scroll-hint-badge {
+    font-size: 0.65em;
+    padding: 4px 10px;
   }
 
   .card-container {
