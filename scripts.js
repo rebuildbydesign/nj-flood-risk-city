@@ -165,6 +165,9 @@ const csvMunKeyMap = {
 // ========================================
 const municipalityTotals = {};
 
+// Overall summary from CSV: { "NEWARK CITY": { total, risk2025, risk2050, pct2025, pct2050, finding }, ... }
+const municipalityOverall = {};
+
 function loadMunicipalityTotals() {
   return fetch('data/8_municipality_findings.csv')
     .then(res => res.text())
@@ -196,8 +199,28 @@ function loadMunicipalityTotals() {
           continue;
         }
 
-        // Skip header rows and "Overall" rows
-        if (cols[0] === 'Public Asset' || cols[0] === 'Overall' || !currentMun) continue;
+        // Skip header rows
+        if (cols[0] === 'Public Asset' || !currentMun) continue;
+
+        // Capture the "Overall" summary row for this municipality
+        if (cols[0] === 'Overall' || (cols[0] === '' && cols[1] && parseInt(cols[1]) > 0)) {
+          const totalCount = parseInt(cols[1]) || 0;
+          const risk2025 = parseInt(cols[2]) || 0;
+          const pct2025 = cols[3] || '0%';
+          const risk2050 = parseInt(cols[4]) || 0;
+          const pct2050 = cols[5] || '0%';
+          const finding = cols[6] || '';
+
+          municipalityOverall[currentMun] = {
+            total: totalCount,
+            risk2025: risk2025,
+            risk2050: risk2050,
+            pct2025: pct2025,
+            pct2050: pct2050,
+            finding: finding
+          };
+          continue;
+        }
 
         // Parse asset row: Asset Name, Total Count, 2025 Risk, % 2025, 2050 Risk, % 2050, Findings
         const csvAssetName = cols[0];
@@ -209,6 +232,7 @@ function loadMunicipalityTotals() {
         }
       }
       console.log('Municipality totals loaded:', municipalityTotals);
+      console.log('Municipality overall loaded:', municipalityOverall);
     })
     .catch(err => console.warn('Could not load municipality totals CSV:', err));
 }
@@ -342,15 +366,27 @@ function updateLegend() {
 
     const cityDisplayName = municipalityLabels[activeCity] || activeCity;
 
-    // Compute overall totals for header
-    let overallTotal = 0;
-    allTypes.forEach(type => { overallTotal += (munTotals[type] || 0); });
+    // Use CSV overall totals if available, else compute from asset type totals
+    const csvOverall = municipalityOverall[activeCity];
+    let overallTotal, overallRisk2025, overallRisk2050, pctRisk2025, pctRisk2050;
 
-    const pctRisk2025 = overallTotal > 0 ? ((total2025 / overallTotal) * 100).toFixed(1) : '0';
-    const pctRisk2050 = overallTotal > 0 ? ((total2050 / overallTotal) * 100).toFixed(1) : '0';
+    if (csvOverall) {
+      overallTotal = csvOverall.total;
+      overallRisk2025 = csvOverall.risk2025;
+      overallRisk2050 = csvOverall.risk2050;
+      pctRisk2025 = csvOverall.pct2025;
+      pctRisk2050 = csvOverall.pct2050;
+    } else {
+      overallTotal = 0;
+      allTypes.forEach(type => { overallTotal += (munTotals[type] || 0); });
+      overallRisk2025 = total2025;
+      overallRisk2050 = total2050;
+      pctRisk2025 = overallTotal > 0 ? ((total2025 / overallTotal) * 100).toFixed(1) + '%' : '0%';
+      pctRisk2050 = overallTotal > 0 ? ((total2050 / overallTotal) * 100).toFixed(1) + '%' : '0%';
+    }
 
     // Update on-map findings overlay
-    updateMapFindings(overallTotal, total2025, total2050, pctRisk2025, pctRisk2050);
+    updateMapFindings(overallTotal, overallRisk2025, overallRisk2050, pctRisk2025, pctRisk2050);
 
     // Build legend (cards only — findings are on the map)
     legend.innerHTML = `
@@ -556,12 +592,24 @@ function updateMunicipalityLabel() {
   if (!el) return;
   const cityDisplayName = municipalityLabels[activeCity] || activeCity;
   el.textContent = cityDisplayName;
+
+  // Re-show the finding card when switching cities (in case user closed it)
+  const card = document.getElementById('finding-card');
+  if (card) card.style.display = '';
 }
 
 function updateMapFindings(overallTotal, total2025, total2050, pctRisk2025, pctRisk2050) {
   const el = document.getElementById('finding-text');
   if (!el) return;
 
+  // Use CSV findings if available for this city
+  const csvOverall = municipalityOverall[activeCity];
+  if (csvOverall && csvOverall.finding) {
+    el.innerHTML = csvOverall.finding;
+    return;
+  }
+
+  // Fallback: generate sentence if CSV finding is missing
   if (overallTotal === 0) {
     el.innerHTML = '';
     return;
@@ -569,7 +617,6 @@ function updateMapFindings(overallTotal, total2025, total2050, pctRisk2025, pctR
 
   const cityDisplayName = municipalityLabels[activeCity] || activeCity;
 
-  // Narrative sentence form matching county project style
   el.innerHTML = `
     Of <strong>${overallTotal}</strong> public assets in ${cityDisplayName},
     <strong>${total2025}</strong> are in the floodplain today &mdash;
