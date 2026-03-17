@@ -34,9 +34,11 @@ let activeCity = (_urlCityParam && _validCities.includes(_urlCityParam))
     ? _urlCityParam
     : "NEWARK CITY";
 
-// Sync dropdown immediately (script runs after DOM, so element is available)
+// Sync both dropdowns immediately (script runs after DOM, so elements are available)
 const _selectEl = document.getElementById('municipality-select');
 if (_selectEl) _selectEl.value = activeCity;
+const _mobileSelectEl = document.getElementById('mobile-municipality-select');
+if (_mobileSelectEl) _mobileSelectEl.value = activeCity;
 
 let popup = null;
 
@@ -385,8 +387,9 @@ function updateLegend() {
       pctRisk2050 = overallTotal > 0 ? ((total2050 / overallTotal) * 100).toFixed(1) + '%' : '0%';
     }
 
-    // Update on-map findings overlay
+    // Update on-map findings overlay + mobile finding
     updateMapFindings(overallTotal, overallRisk2025, overallRisk2050, pctRisk2025, pctRisk2050);
+    if (typeof updateMobileFinding === 'function') updateMobileFinding();
 
     // Build legend (cards only — findings are on the map)
     legend.innerHTML = `
@@ -521,6 +524,11 @@ function updateLegend() {
     requestAnimationFrame(() => {
       requestAnimationFrame(updateScrollHint);
     });
+
+    // ---- Update mobile asset list in parallel ----
+    if (typeof updateMobileAssetList === 'function') {
+      updateMobileAssetList(counts2025, counts2050, munTotals, allTypes);
+    }
   });
 }
 
@@ -1196,4 +1204,257 @@ document.querySelectorAll('.tooltip-wrap').forEach(wrap => {
     floatingTooltip.classList.remove('visible');
   });
 });
+
+
+// ========================================
+// MOBILE BOTTOM SHEET — Tab switching, chip toggles, syncing
+// ========================================
+(function initMobileSheet() {
+  const isMobile = () => window.innerWidth <= 768;
+
+  // ---- Collapse / Expand toggle ----
+  const sheet = document.getElementById('mobile-sheet');
+  const sheetToggle = document.getElementById('mobile-sheet-toggle');
+  const toggleLabel = sheetToggle ? sheetToggle.querySelector('.mobile-toggle-label') : null;
+
+  if (sheetToggle && sheet) {
+    sheetToggle.addEventListener('click', () => {
+      if (sheet.classList.contains('collapsed')) {
+        sheet.classList.remove('collapsed');
+        sheet.classList.add('expanded');
+        if (toggleLabel) toggleLabel.textContent = 'Click to Hide Map Controls';
+      } else {
+        sheet.classList.remove('expanded');
+        sheet.classList.add('collapsed');
+        if (toggleLabel) toggleLabel.textContent = 'Click to Explore Map Controls';
+      }
+    });
+  }
+
+  // ---- Tab switching ----
+  const tabs = document.querySelectorAll('.mobile-sheet-tabs .mobile-tab');
+  const tabLayers = document.getElementById('mobile-tab-layers');
+  const tabAssets = document.getElementById('mobile-tab-assets');
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+
+      const which = tab.dataset.tab;
+      if (which === 'layers') {
+        tabLayers.classList.remove('hidden');
+        tabAssets.classList.add('hidden');
+      } else {
+        tabAssets.classList.remove('hidden');
+        tabLayers.classList.add('hidden');
+      }
+    });
+  });
+
+  // ---- Mobile city dropdown — sync with desktop ----
+  const mobileSelect = document.getElementById('mobile-municipality-select');
+  const desktopSelect = document.getElementById('municipality-select');
+
+  if (mobileSelect) {
+    mobileSelect.addEventListener('change', e => {
+      activeCity = e.target.value;
+      if (desktopSelect) desktopSelect.value = activeCity;
+      loadLayers();
+      zoomToMunicipality(activeCity);
+      updateMunicipalityLabel();
+      if (blueAcresVisible) {
+        updateBlueAcresHighlight();
+        updateBlueAcresStats();
+      }
+      updateMobileBlueAcresStats();
+      updateMobileFinding();
+    });
+  }
+
+  // Keep mobile select in sync when desktop select changes
+  if (desktopSelect) {
+    desktopSelect.addEventListener('change', () => {
+      if (mobileSelect) mobileSelect.value = activeCity;
+      updateMobileFinding();
+      updateMobileBlueAcresStats();
+    });
+  }
+
+  // ---- Chip toggles (mirror desktop button behavior) ----
+  const chip2025 = document.getElementById('mobile-toggle-2025');
+  const chip2050 = document.getElementById('mobile-toggle-2050');
+  const chipBA = document.getElementById('mobile-toggle-blue-acres');
+  const desktopBtn2025 = document.getElementById('toggle-2025');
+  const desktopBtn2050 = document.getElementById('toggle-2050');
+  const desktopBtnBA = document.getElementById('toggle-blue-acres');
+
+  if (chip2025) {
+    chip2025.addEventListener('click', () => {
+      show2025 = !show2025;
+      chip2025.classList.toggle('active', show2025);
+      if (desktopBtn2025) desktopBtn2025.classList.toggle('active', show2025);
+      loadLayers();
+    });
+  }
+
+  if (chip2050) {
+    chip2050.addEventListener('click', () => {
+      show2050 = !show2050;
+      chip2050.classList.toggle('active', show2050);
+      if (desktopBtn2050) desktopBtn2050.classList.toggle('active', show2050);
+      loadLayers();
+    });
+  }
+
+  if (chipBA) {
+    chipBA.addEventListener('click', () => {
+      // Trigger the desktop Blue Acres button click (it has all the logic)
+      if (desktopBtnBA) desktopBtnBA.click();
+      chipBA.classList.toggle('active', blueAcresVisible);
+      updateMobileBlueAcresStats();
+    });
+  }
+
+  // ---- Mobile finding text ----
+  window.updateMobileFinding = function() {
+    const el = document.getElementById('mobile-finding-text');
+    if (!el) return;
+
+    const csvOverall = municipalityOverall[activeCity];
+    if (csvOverall && csvOverall.finding) {
+      el.innerHTML = csvOverall.finding;
+      return;
+    }
+
+    // Fallback: use computed counts
+    const cityDisplayName = municipalityLabels[activeCity] || activeCity;
+    const overall = municipalityOverall[activeCity];
+    if (overall) {
+      el.innerHTML = `
+        Of <strong>${overall.total}</strong> public assets in ${cityDisplayName},
+        <strong>${overall.risk2025}</strong> are in the floodplain today &mdash;
+        <span class="finding-2050">rising to ${overall.risk2050} by 2050</span>
+        (${overall.pct2050} of all assets).
+      `;
+    } else {
+      el.innerHTML = `Select a city to see flood exposure findings.`;
+    }
+  };
+
+  // ---- Mobile Blue Acres stats ----
+  window.updateMobileBlueAcresStats = function() {
+    const statsEl = document.getElementById('mobile-blue-acres-stats');
+    if (!statsEl) return;
+
+    if (!blueAcresVisible) {
+      statsEl.classList.add('hidden');
+      return;
+    }
+
+    statsEl.classList.remove('hidden');
+
+    const total = blueAcresTotalCount;
+    const matchingBaMun = Object.entries(blueAcresMunMap)
+      .find(([_, appKey]) => appKey === activeCity);
+    const baMunName = matchingBaMun ? matchingBaMun[0] : null;
+    const cityCount = baMunName ? (blueAcresCounts[baMunName] || 0) : 0;
+    const cityDisplayName = municipalityLabels[activeCity] || activeCity;
+
+    if (cityCount > 0) {
+      statsEl.innerHTML = `
+        <span class="stat-highlight">${total.toLocaleString()}</span> parcels acquired statewide.
+        <span class="stat-city">${cityDisplayName}</span> has
+        <span class="stat-highlight">${cityCount}</span> Blue Acres parcel${cityCount !== 1 ? 's' : ''}.
+      `;
+    } else {
+      statsEl.innerHTML = `
+        <span class="stat-highlight">${total.toLocaleString()}</span> parcels acquired statewide.
+        <span class="stat-city">${cityDisplayName}</span> has no Blue Acres parcels yet.
+      `;
+    }
+  };
+
+  // ---- Mobile asset list (mirrors updateLegend cards) ----
+  window.updateMobileAssetList = function(counts2025, counts2050, munTotals, allTypes) {
+    const container = document.getElementById('mobile-asset-list');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    // Sort by 2050 exposure percentage descending
+    const sortedTypes = [...allTypes].sort((a, b) => {
+      const totalA = munTotals[a] || Math.max(counts2025[a] || 0, counts2050[a] || 0) || 1;
+      const totalB = munTotals[b] || Math.max(counts2025[b] || 0, counts2050[b] || 0) || 1;
+      const pctA = (counts2050[a] || 0) / totalA;
+      const pctB = (counts2050[b] || 0) / totalB;
+      return pctB - pctA;
+    });
+
+    sortedTypes.forEach(type => {
+      const color = colors[type] || '#999';
+      const label = assetLabels[type] || type;
+      const emoji = assetEmojis[type] || '';
+      const c2025 = counts2025[type] || 0;
+      const c2050 = counts2050[type] || 0;
+      const total = munTotals[type] || Math.max(c2025, c2050) || 1;
+      const isVisible = !hiddenAssetTypes.has(type);
+
+      const pct2025 = (c2025 / total) * 100;
+      const pct2050 = (c2050 / total) * 100;
+
+      const card = document.createElement('div');
+      card.className = 'asset-card' + (isVisible ? '' : ' asset-card-off');
+      card.dataset.assetType = type;
+      card.style.borderLeftColor = color;
+      card.title = `Click to ${isVisible ? 'hide' : 'show'} ${label} on map`;
+      card.innerHTML = `
+        <div class="card-header">
+          <span class="card-emoji">${emoji}</span>
+          <span class="card-title">${label}</span>
+        </div>
+        <div class="card-bars">
+          <div class="card-bar-row">
+            <span class="card-bar-label">2025</span>
+            <div class="card-bar-track">
+              <div class="card-bar-fill bar-2025" style="width:${Math.max(pct2025, 2)}%"></div>
+            </div>
+            <span class="card-bar-count">${c2025}/${total}</span>
+          </div>
+          <div class="card-bar-row">
+            <span class="card-bar-label">2050</span>
+            <div class="card-bar-track">
+              <div class="card-bar-fill bar-2050" style="width:${Math.max(pct2050, 2)}%"></div>
+            </div>
+            <span class="card-bar-count">${c2050}/${total}</span>
+          </div>
+        </div>
+      `;
+      container.appendChild(card);
+
+      // Click to toggle
+      card.addEventListener('click', () => {
+        if (hiddenAssetTypes.has(type)) {
+          hiddenAssetTypes.delete(type);
+          card.classList.remove('asset-card-off');
+        } else {
+          hiddenAssetTypes.add(type);
+          card.classList.add('asset-card-off');
+        }
+        applyAssetFilter();
+        // Also sync desktop legend cards
+        document.querySelectorAll(`#legend .asset-card[data-asset-type="${type}"]`).forEach(c => {
+          c.classList.toggle('asset-card-off', hiddenAssetTypes.has(type));
+        });
+      });
+    });
+  };
+
+  // ---- Mobile CSV download ----
+  const mobileDL = document.getElementById('mobile-download-csv');
+  const desktopDL = document.getElementById('download-csv');
+  if (mobileDL && desktopDL) {
+    mobileDL.addEventListener('click', () => desktopDL.click());
+  }
+})();
 

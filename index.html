@@ -160,7 +160,87 @@
   <!-- Floating tooltip (positioned by JS, renders over map) -->
   <div id="floating-tooltip"></div>
 
+  <!-- ========================================
+       MOBILE BOTTOM SHEET (hidden on desktop)
+       ======================================== -->
+  <div id="mobile-sheet" class="mobile-sheet expanded">
+    <!-- Toggle bar (always visible, even when collapsed) -->
+    <div id="mobile-sheet-toggle" class="mobile-sheet-toggle">
+      <span class="mobile-toggle-arrow">▲</span>
+      <span class="mobile-toggle-label">Click to Hide Map Controls</span>
+    </div>
 
+    <!-- Collapsible content wrapper -->
+    <div class="mobile-sheet-body">
+
+      <!-- Project title + description -->
+      <div class="mobile-sheet-header">
+        <p class="mobile-sheet-title">NEW JERSEY CITIES &amp; FLOOD RISK</p>
+        <p class="mobile-sheet-desc">Mapping public assets exposed to flooding across 8 NJ cities.</p>
+      </div>
+
+      <!-- City selector -->
+      <div class="mobile-sheet-city-row">
+        <label class="mobile-city-label">Select a City</label>
+        <select id="mobile-municipality-select" class="mobile-city-select">
+          <option value="NEWARK CITY">Newark</option>
+          <option value="ELIZABETH CITY">Elizabeth</option>
+          <option value="CAMDEN CITY">Camden</option>
+          <option value="TRENTON CITY">Trenton</option>
+          <option value="JERSEY CITY">Jersey City</option>
+          <option value="PATERSON CITY">Paterson</option>
+          <option value="ASBURY PARK CITY">Asbury Park</option>
+          <option value="ATLANTIC CITY">Atlantic City</option>
+        </select>
+      </div>
+
+      <!-- Tabs -->
+      <div class="mobile-sheet-tabs">
+      <button class="mobile-tab active" data-tab="layers">Layers</button>
+      <button class="mobile-tab" data-tab="assets">Assets</button>
+    </div>
+
+    <!-- Tab content: Layers -->
+    <div class="mobile-tab-content" id="mobile-tab-layers">
+      <!-- Key Finding (moved from map overlay) -->
+      <div class="mobile-finding" id="mobile-finding">
+        <div class="mobile-finding-label">KEY FINDING</div>
+        <p class="mobile-finding-text" id="mobile-finding-text"></p>
+      </div>
+
+      <!-- Toggle Floodplains & Buyouts -->
+      <p class="mobile-step-label">Toggle Floodplains &amp; Buyouts</p>
+      <div class="mobile-chip-row">
+        <button id="mobile-toggle-2025" class="mobile-chip chip-2025 active">
+          <span class="chip-label">2025</span>
+          <span class="chip-desc">Current flood risk</span>
+        </button>
+        <button id="mobile-toggle-2050" class="mobile-chip chip-2050">
+          <span class="chip-label">2050</span>
+          <span class="chip-desc">Future flood risk</span>
+        </button>
+        <button id="mobile-toggle-blue-acres" class="mobile-chip chip-ba">
+          <span class="chip-label">Blue Acres</span>
+          <span class="chip-desc">Buyout parcels</span>
+        </button>
+      </div>
+
+      <!-- Blue Acres stats (shown when Blue Acres active) -->
+      <div id="mobile-blue-acres-stats" class="blue-acres-stats hidden"></div>
+    </div>
+
+    <!-- Tab content: Assets -->
+    <div class="mobile-tab-content hidden" id="mobile-tab-assets">
+      <div class="mobile-asset-list" id="mobile-asset-list">
+        <!-- Populated by JS -->
+      </div>
+      <button id="mobile-download-csv" class="download-button">
+        Export City Findings >>
+      </button>
+    </div>
+
+    </div><!-- end .mobile-sheet-body -->
+  </div>
 
   <script src="scripts.js"></script>
   

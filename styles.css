@@ -814,27 +814,10 @@ label {
 }
 
 /* ========================================
-   MOBILE TOGGLE BUTTON
+   MOBILE BOTTOM SHEET (hidden on desktop)
    ======================================== */
-.mobile-toggle {
-  display: none;
-  position: fixed;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 100;
-  background-color: #000;
-  color: #f7c320;
-  border: 3px solid #f7c320;
-  padding: 12px 24px;
-  font-size: 1em;
-  font-weight: bold;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-}
-
-.mobile-toggle:active {
-  transform: translateX(-50%) scale(0.95);
+.mobile-sheet {
+  display: none; /* shown via media query */
 }
 
 /* ========================================
@@ -844,32 +827,14 @@ label {
   body {
     flex-direction: column;
     font-size: 14px;
-    /* Reduce base font size for mobile */
   }
 
-  /* Sidebar becomes compact bottom drawer */
+  /* Hide desktop sidebar on mobile */
   #sidebar {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    width: 97%;
-    height: 50vh;
-    /* Only 50% of screen */
-    max-height: 50vh;
-    padding: 10px 12px;
-    transform: translateY(0);
-    /* Sidebar open by default on mobile */
-    transition: transform 0.3s ease;
-    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.5);
-    border-top: 2px solid #f7c320;
+    display: none;
   }
 
-  #sidebar.open {
-    transform: translateY(0);
-  }
-
-  
-  /* Map takes full screen */
+  /* Map takes full screen behind sheet */
   #map {
     width: 100%;
     height: 100vh;
@@ -885,56 +850,14 @@ label {
     max-width: 50px;
   }
 
-  /* Finding card hidden on mobile via the 1024px breakpoint above */
-
-  /* Compact header */
-  .purpose-strong {
-    font-size: 1em;
-    /* 14px base = 14px */
-    line-height: 1.2;
-    margin-bottom: 6px;
-  }
-
-  .helper-text {
-    font-size: 0.64em;
-    /* ~9px */
-    margin: 2px 0 6px 0;
-    line-height: 1.3;
-  }
-
+  /* Info button above sheet toggle bar */
   .map-info-btn {
     width: 24px;
     height: 24px;
     font-size: 12px;
-    bottom: 24px;
+    bottom: 56px;
     right: 8px;
-  }
-
-  /* Step headers - smaller */
-  h3 {
-    font-size: 0.85em;
-    /* ~12px */
-    margin: 8px 0 4px 0;
-  }
-
-  /* Municipality dropdown - compact */
-  #municipality-select {
-    padding: 8px;
-    font-size: 0.78em;
-    /* ~11px */
-    margin-bottom: 8px;
-  }
-
-  /* Scenario buttons - compact */
-  .button-group {
-    margin-bottom: 10px;
-  }
-
-  .button-group button {
-    padding: 8px 10px;
-    font-size: 0.78em;
-    min-height: auto;
-    margin-bottom: 6px;
+    z-index: 20;
   }
 
   /* Floating tooltip - smaller on mobile */
@@ -944,125 +867,374 @@ label {
     padding: 8px 10px;
   }
 
-  /* Legend - compact */
-  #legend {
-    margin-top: 6px;
-  }
-
-  .legend-helper {
-    font-size: 0.64em;
-    margin-bottom: 4px;
-  }
-
-  .bar-legend-key {
-    font-size: 0.58em;
-    margin-bottom: 6px;
-    gap: 10px;
-  }
-
-  .card-scroll-wrapper {
-    max-height: 180px;
-  }
-
-  .scroll-hint-badge {
-    font-size: 0.65em;
-    padding: 4px 10px;
-  }
-
-  .card-container {
-    gap: 4px;
-  }
-
-  .asset-card {
-    padding: 6px 8px;
-    border-left-width: 5px;
-  }
-
-  .card-header {
-    margin-bottom: 4px;
-    gap: 4px;
-  }
-
-  .card-emoji {
-    font-size: 0.75em;
-  }
-
-  .card-title {
-    font-size: 0.65em;
-  }
-
-  .card-bars {
-    gap: 2px;
-  }
-
-  .card-bar-track {
-    height: 8px;
-  }
-
-  .card-bar-label {
-    font-size: 0.55em;
-    width: 20px;
-  }
-
-  .card-bar-count {
-    font-size: 0.55em;
-    width: 40px;
-  }
-
-  .blue-acres-stats {
-    font-size: 0.6em;
-    padding: 6px 8px;
-  }
-
-  /* Download button */
-  .download-button {
-    font-size: 0.64em;
-    /* ~9px */
-    margin-top: 8px;
-  }
-
-  /* Request city text */
-  .request-city-text {
-    font-size: 0.6em;
-    margin: 6px 0 0 0;
-    padding: 6px 8px;
-  }
-
-  /* Methodology popup - optimized for mobile */
-  .popup {
-    padding: 8px;
-  }
-
+  /* Methodology popup */
+  .popup { padding: 8px; }
   .popup-content {
     max-height: 85vh;
     padding: 12px 15px;
-    font-size: 0.75em;
-    /* Smaller text */
+    font-size: 0.8em;
+  }
+  .popup-content h4 { font-size: 1.1em; margin-bottom: 8px; }
+  .data-sources { font-size: 0.85em; padding-left: 15px; }
+  .data-sources li { margin-bottom: 6px; }
+  #close-methodology { font-size: 1.5em; padding: 5px 10px; }
+  br { display: none; }
+
+  /* ---- MOBILE BOTTOM SHEET ---- */
+  .mobile-sheet {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 50vh;
+    max-height: 50vh;
+    background: #111;
+    z-index: 50;
+    border-top: 2px solid #f7c320;
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.7);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
-  .popup-content h4 {
-    font-size: 1.1em;
-    margin-bottom: 8px;
+  /* Collapsed: slide down, only toggle bar visible */
+  .mobile-sheet.collapsed {
+    transform: translateY(calc(100% - 44px));
   }
 
-  .data-sources {
+  /* Expanded: fully visible */
+  .mobile-sheet.expanded {
+    transform: translateY(0);
+  }
+
+  /* ---- Toggle bar (always visible) ---- */
+  .mobile-sheet-toggle {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 8px 0 6px;
+    cursor: pointer;
+    flex-shrink: 0;
+    background: #000;
+    -webkit-tap-highlight-color: transparent;
+    z-index: 5;
+  }
+
+  .mobile-toggle-arrow {
+    font-size: 1em;
+    color: #999;
+    transition: color 0.2s, transform 0.3s ease;
+    line-height: 1;
+  }
+
+  .mobile-sheet-toggle:hover .mobile-toggle-arrow,
+  .mobile-sheet-toggle:active .mobile-toggle-arrow {
+    color: #f7c320;
+  }
+
+  /* Arrow points up when collapsed (inviting user to pull up) */
+  .mobile-sheet.collapsed .mobile-toggle-arrow {
+    transform: rotate(0deg);
+  }
+
+  /* Arrow points down when expanded (inviting user to close) */
+  .mobile-sheet.expanded .mobile-toggle-arrow {
+    transform: rotate(180deg);
+  }
+
+  .mobile-toggle-label {
     font-size: 0.85em;
-    padding-left: 15px;
+    color: #999;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    transition: color 0.2s;
   }
 
-  .data-sources li {
-    margin-bottom: 6px;
+  .mobile-sheet-toggle:hover .mobile-toggle-label {
+    color: #f7c320;
   }
 
-  #close-methodology {
-    font-size: 1.5em;
-    padding: 5px 10px;
+  /* ---- Collapsible body ---- */
+  .mobile-sheet-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
   }
 
-  /* Spacing adjustments */
-  br {
+  /* Project title + description */
+  .mobile-sheet-header {
+    flex-shrink: 0;
+    padding: 4px 14px 6px;
+  }
+
+  .mobile-sheet-title {
+    font-weight: 700;
+    font-size: 1.05em;
+    color: #f7c320;
+    margin: 0 0 3px;
+    letter-spacing: 0.01em;
+  }
+
+  .mobile-sheet-desc {
+    font-size: 0.85em;
+    color: #bbb;
+    margin: 0;
+    line-height: 1.35;
+  }
+
+  /* City selector row */
+  .mobile-sheet-city-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 14px 10px;
+    flex-shrink: 0;
+  }
+
+  .mobile-city-label {
+    font-size: 0.85em;
+    color: #f7c320;
+    font-weight: 600;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .mobile-city-select {
+    flex: 1;
+    padding: 9px 12px;
+    background: #1a1a1a;
+    color: #fff;
+    border: 1.5px solid #444;
+    border-radius: 6px;
+    font-size: 0.95em;
+    font-weight: 600;
+    appearance: auto;
+    cursor: pointer;
+  }
+
+  /* Tabs */
+  .mobile-sheet-tabs {
+    display: flex;
+    flex-shrink: 0;
+    border-bottom: 1px solid #333;
+  }
+
+  .mobile-tab {
+    flex: 1;
+    background: #1a1a1a;
+    border: none;
+    color: #888;
+    font-size: 0.9em;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 10px 0;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color 0.2s, border-color 0.2s;
+  }
+
+  .mobile-tab.active {
+    color: #f7c320;
+    border-bottom-color: #f7c320;
+    background: #1e1e1e;
+  }
+
+  .mobile-tab:hover {
+    color: #ccc;
+  }
+
+  /* Tab content panels */
+  .mobile-tab-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 14px;
+    scrollbar-width: thin;
+    scrollbar-color: #555 transparent;
+  }
+  .mobile-tab-content::-webkit-scrollbar { width: 4px; }
+  .mobile-tab-content::-webkit-scrollbar-track { background: transparent; }
+  .mobile-tab-content::-webkit-scrollbar-thumb { background: #555; border-radius: 2px; }
+
+  .mobile-tab-content.hidden {
     display: none;
-    /* Remove extra line breaks on mobile */
+  }
+
+  /* ---- Key Finding (inside Layers tab) ---- */
+  .mobile-finding {
+    background: rgba(0, 0, 0, 0.5);
+    border-left: 4px solid;
+    border-image: linear-gradient(to bottom, #a5d5f1, #3a7fc3) 1;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    border-radius: 0 4px 4px 0;
+  }
+
+  .mobile-finding-label {
+    font-size: 0.75em;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: #3a7fc3;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .mobile-finding-text {
+    font-size: 0.9em;
+    line-height: 1.5;
+    color: #e8e8e8;
+    margin: 0;
+  }
+
+  .mobile-finding-text strong {
+    color: #fff;
+  }
+
+  .mobile-finding-text .finding-2050 {
+    color: #a5d5f1;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    font-weight: 600;
+  }
+
+  /* ---- Step label ---- */
+  .mobile-step-label {
+    font-size: 0.85em;
+    font-weight: 600;
+    color: #f7c320;
+    margin: 0 0 8px;
+  }
+
+  /* ---- Chip toggles with descriptions ---- */
+  .mobile-chip-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .mobile-chip {
+    flex: 1;
+    min-width: 0;
+    padding: 12px 8px 10px;
+    border-radius: 0;
+    font-size: 1em;
+    font-weight: 600;
+    text-align: center;
+    cursor: pointer;
+    border: 2px solid #444;
+    background: #2a2a2a;
+    color: #aaa;
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .chip-label {
+    font-size: 0.95em;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  .chip-desc {
+    font-size: 0.68em;
+    font-weight: 400;
+    opacity: 0.7;
+    line-height: 1.2;
+  }
+
+  .mobile-chip:active {
+    transform: scale(0.96);
+  }
+
+  /* 2025 chip active */
+  .mobile-chip.chip-2025.active {
+    background: #a5d5f1;
+    border-color: #89c5e8;
+    color: #000;
+    box-shadow: 0 2px 8px rgba(165, 213, 241, 0.35);
+  }
+
+  .mobile-chip.chip-2025.active .chip-desc {
+    opacity: 0.6;
+  }
+
+  /* 2050 chip active */
+  .mobile-chip.chip-2050.active {
+    background: #3a7fc3;
+    border-color: #2e6aaa;
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(58, 127, 195, 0.35);
+  }
+
+  /* Blue Acres chip active */
+  .mobile-chip.chip-ba.active {
+    background: #0d9488;
+    border-color: #0f766e;
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(13, 148, 136, 0.35);
+  }
+
+  /* Blue Acres stats inside sheet */
+  .mobile-sheet .blue-acres-stats {
+    font-size: 0.85em;
+    padding: 8px 10px;
+    margin-top: 2px;
+  }
+
+  /* ---- Assets tab: card list ---- */
+  .mobile-asset-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .mobile-asset-list .asset-card {
+    padding: 8px 10px;
+    border-left-width: 5px;
+    border-radius: 0 6px 6px 0;
+  }
+
+  .mobile-asset-list .card-header {
+    margin-bottom: 5px;
+    gap: 6px;
+  }
+
+  .mobile-asset-list .card-emoji {
+    font-size: 0.95em;
+  }
+
+  .mobile-asset-list .card-title {
+    font-size: 0.88em;
+  }
+
+  .mobile-asset-list .card-bars {
+    gap: 3px;
+  }
+
+  .mobile-asset-list .card-bar-track {
+    height: 9px;
+  }
+
+  .mobile-asset-list .card-bar-label {
+    font-size: 0.72em;
+    width: 26px;
+  }
+
+  .mobile-asset-list .card-bar-count {
+    font-size: 0.72em;
+    width: 42px;
+  }
+
+  /* Download in assets tab */
+  .mobile-tab-content .download-button {
+    font-size: 0.88em;
+    margin-top: 12px;
   }
 }
 
@@ -1092,12 +1264,12 @@ label {
    LANDSCAPE PHONES (orientation)
    ======================================== */
 @media screen and (max-width: 768px) and (orientation: landscape) {
-  #sidebar {
-    height: 60vh;
-    transform: translateY(calc(100% - 40px));
+  .mobile-sheet {
+    height: 55vh;
+    max-height: 55vh;
   }
 
-  #sidebar.open+#map .mobile-toggle {
-    bottom: calc(60vh + 10px);
+  .mobile-sheet.collapsed {
+    transform: translateY(calc(100% - 44px));
   }
 }
