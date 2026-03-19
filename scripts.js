@@ -72,10 +72,12 @@ const blueAcresTotalCount = 1677;
 // ========================================
 const colors = {
   AIRPORT: "#111111",
+  FIRE: "#E63946",
   HOSPITAL: "#D7263D",
   KCS: "#FF8700",
   LIBRARY: "#FFD100",
   PARK: "#3FB950",
+  POLICE: "#1D4ED8",
   POWERPLANT: "#8C1EFF",
   SCHOOL: "#FF5EBF",
   SOLIDHAZARD: "#A15500",
@@ -89,10 +91,12 @@ const colors = {
 // ========================================
 const assetLabels = {
   AIRPORT: "Aviation Facilities",
+  FIRE: "Fire Departments",
   HOSPITAL: "Hospitals",
-  KCS: "Contaminated Sites",
+  KCS: "Known Contaminated Sites",
   LIBRARY: "Libraries",
   PARK: "Parks",
+  POLICE: "Police Stations",
   POWERPLANT: "Power Plants",
   SCHOOL: "Schools",
   SOLIDHAZARD: "Solid & Hazardous Waste",
@@ -106,10 +110,12 @@ const assetLabels = {
 // ========================================
 const assetEmojis = {
   AIRPORT: "\u2708\uFE0F",
+  FIRE: "\uD83D\uDE92",
   HOSPITAL: "\uD83C\uDFE5",
   KCS: "\u26A0\uFE0F",
   LIBRARY: "\uD83D\uDCDA",
   PARK: "\uD83C\uDF33",
+  POLICE: "\uD83D\uDE94",
   POWERPLANT: "\u26A1",
   SCHOOL: "\uD83C\uDFEB",
   SOLIDHAZARD: "\uD83E\uDDEA",
@@ -137,10 +143,12 @@ const municipalityLabels = {
 // ========================================
 const csvAssetKeyMap = {
   "AIRPORT": "AIRPORT",
+  "FIRE DEPARTMENT": "FIRE",
   "HOSPITAL": "HOSPITAL",
   "KNOWN CONTAMINATED SITE": "KCS",
   "LIBRARY": "LIBRARY",
   "PARK": "PARK",
+  "POLICE STATION": "POLICE",
   "POWERPLANT": "POWERPLANT",
   "SCHOOL": "SCHOOL",
   "SOLID & HAZARD": "SOLIDHAZARD",
@@ -148,6 +156,32 @@ const csvAssetKeyMap = {
   "SUPERFUND": "SUPERFUND",
   "WASTEWATER TREATMENT": "WASTEWATER"
 };
+
+// ========================================
+// ASSET NAME NORMALIZATION
+// Handles GeoJSON naming variants (e.g. 2025 uses "TPL PARK", 2050 uses "PARK")
+// ========================================
+const assetNormalize = {
+  "TPL PARK": "PARK",
+  "SOLIDHAZARDWASTE": "SOLIDHAZARD"
+};
+
+// Helper: convert hex color to rgba string
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// Expanded color match pairs for Mapbox expressions (includes normalized + alias names)
+const colorMatchPairs = [];
+Object.entries(colors).forEach(([key, color]) => {
+  colorMatchPairs.push(key, color);
+});
+Object.entries(assetNormalize).forEach(([alias, normalized]) => {
+  colorMatchPairs.push(alias, colors[normalized]);
+});
 
 // CSV municipality name → app activeCity key
 const csvMunKeyMap = {
@@ -208,10 +242,24 @@ function loadMunicipalityTotals() {
         if (cols[0] === 'Overall' || (cols[0] === '' && cols[1] && parseInt(cols[1]) > 0)) {
           const totalCount = parseInt(cols[1]) || 0;
           const risk2025 = parseInt(cols[2]) || 0;
-          const pct2025 = cols[3] || '0%';
+          let pct2025 = cols[3] || '0%';
           const risk2050 = parseInt(cols[4]) || 0;
-          const pct2050 = cols[5] || '0%';
+          let pct2050 = cols[5] || '0%';
           const finding = cols[6] || '';
+
+          // Normalize percentages: convert raw decimals (e.g. "0.392") to "39.2%"
+          if (pct2025 && !pct2025.includes('%')) {
+            const val = parseFloat(pct2025);
+            if (!isNaN(val) && val >= 0 && val <= 1) {
+              pct2025 = (val * 100).toFixed(1) + '%';
+            }
+          }
+          if (pct2050 && !pct2050.includes('%')) {
+            const val = parseFloat(pct2050);
+            if (!isNaN(val) && val >= 0 && val <= 1) {
+              pct2050 = (val * 100).toFixed(1) + '%';
+            }
+          }
 
           municipalityOverall[currentMun] = {
             total: totalCount,
@@ -281,10 +329,13 @@ function loadLayers() {
   // Filter to active municipality (respecting hidden asset types)
   map.setFilter('boundary', ['==', ['get', 'MUN'], activeCity]);
 
-  // Build asset filter including hidden types
+  // Build asset filter including hidden types (+ aliases)
   const assetFilters = ['all', ['==', ['get', 'MUN'], activeCity]];
   hiddenAssetTypes.forEach(type => {
     assetFilters.push(['!=', ['get', 'ASSET'], type]);
+    Object.entries(assetNormalize).forEach(([alias, normalized]) => {
+      if (normalized === type) assetFilters.push(['!=', ['get', 'ASSET'], alias]);
+    });
   });
   map.setFilter(visibleAssetId, assetFilters);
 
@@ -319,7 +370,8 @@ function getFeaturesForYear(year) {
 function countByType(features) {
   const counts = {};
   features.forEach(f => {
-    const type = f.properties.ASSET;
+    const rawType = f.properties.ASSET;
+    const type = assetNormalize[rawType] || rawType;
     counts[type] = (counts[type] || 0) + 1;
   });
   return counts;
@@ -433,6 +485,7 @@ function updateLegend() {
       card.className = 'asset-card' + (isVisible ? '' : ' asset-card-off');
       card.dataset.assetType = type;
       card.style.borderLeftColor = color;
+      card.style.background = `linear-gradient(135deg, ${hexToRgba(color, 0.1)} 0%, ${hexToRgba(color, 0.03)} 100%)`;
       card.title = `Click to ${isVisible ? 'hide' : 'show'} ${label} on map`;
       card.innerHTML = `
         <div class="card-header">
@@ -543,9 +596,13 @@ function applyAssetFilter() {
   const filters = ['all', ['==', ['get', 'MUN'], activeCity]];
 
   if (hiddenAssetTypes.size > 0) {
-    // Exclude hidden types
+    // Exclude hidden types (including any GeoJSON alias names)
     hiddenAssetTypes.forEach(type => {
       filters.push(['!=', ['get', 'ASSET'], type]);
+      // Also exclude aliases that normalize to this type
+      Object.entries(assetNormalize).forEach(([alias, normalized]) => {
+        if (normalized === type) filters.push(['!=', ['get', 'ASSET'], alias]);
+      });
     });
   }
 
@@ -629,7 +686,7 @@ function updateMapFindings(overallTotal, total2025, total2050, pctRisk2025, pctR
     Of <strong>${overallTotal}</strong> public assets in ${cityDisplayName},
     <strong>${total2025}</strong> are in the floodplain today &mdash;
     <span class="finding-2050">rising to ${total2050} by 2050</span>
-    (${pctRisk2050}% of all assets).
+    (${pctRisk2050} of all assets).
   `;
 }
 
@@ -738,7 +795,7 @@ map.on('load', () => {
         'circle-color': [
           'match',
           ['get', 'ASSET'],
-          ...Object.entries(colors).flat(),
+          ...colorMatchPairs,
           '#cccccc'
         ],
         'circle-stroke-color': '#ffffff',
@@ -1102,7 +1159,8 @@ document.getElementById('download-csv').addEventListener('click', () => {
         const coords = f.geometry.coordinates;
 
         const name = (props.NAME || 'Unknown').replace(/,/g, ';');
-        const assetType = assetLabels[props.ASSET] || props.ASSET || 'Unknown';
+        const normalizedAsset = assetNormalize[props.ASSET] || props.ASSET;
+        const assetType = assetLabels[normalizedAsset] || normalizedAsset || 'Unknown';
         const county = (props.COUNTY || 'Unknown').replace(/,/g, ';');
         const municipality = municipalityLabels[props.MUN] || props.MUN || 'Unknown';
         const uniqueId = props.UNIQUE_ID || 'Unknown';
@@ -1407,6 +1465,7 @@ document.querySelectorAll('.tooltip-wrap').forEach(wrap => {
       card.className = 'asset-card' + (isVisible ? '' : ' asset-card-off');
       card.dataset.assetType = type;
       card.style.borderLeftColor = color;
+      card.style.background = `linear-gradient(135deg, ${hexToRgba(color, 0.1)} 0%, ${hexToRgba(color, 0.03)} 100%)`;
       card.title = `Click to ${isVisible ? 'hide' : 'show'} ${label} on map`;
       card.innerHTML = `
         <div class="card-header">

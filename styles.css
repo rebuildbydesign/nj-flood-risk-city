@@ -600,19 +600,19 @@ label {
 
 /* Individual asset card */
 .asset-card {
-  background: #2a2a2a;
   border: 1px solid #3a3a3a;
-  border-left: 6px solid #5a5a5a;
+  border-left: 10px solid #5a5a5a;
   border-radius: 0 4px 4px 0;
   padding: 8px 10px;
   cursor: pointer;
-  transition: opacity 0.25s ease, transform 0.15s ease;
+  transition: opacity 0.25s ease, transform 0.15s ease, background 0.25s ease;
   user-select: none;
+  background: #2a2a2a;
 }
 
 .asset-card:hover {
   transform: translateX(2px);
-  background: #333333;
+  filter: brightness(1.15);
 }
 
 .asset-card-off {
@@ -1196,7 +1196,7 @@ label {
 
   .mobile-asset-list .asset-card {
     padding: 8px 10px;
-    border-left-width: 5px;
+    border-left-width: 8px;
     border-radius: 0 6px 6px 0;
   }
 
