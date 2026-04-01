@@ -22,8 +22,8 @@ method-strong {
   font-weight: 600;
   text-decoration: none;
   letter-spacing: 0.03em;
-  margin-bottom: 10px;
-  padding: 4px 8px;
+  margin-bottom: 4px;
+  padding: 3px 6px;
   border: 1px solid rgba(173, 228, 250, 0.3);
   border-radius: 3px;
   transition: all 0.2s ease;
@@ -101,10 +101,10 @@ method-strong {
 
 .purpose-strong {
   font-weight: 700;
-  font-size: 1.125em;
+  font-size: 1.05em;
   color: #f7c320;
   line-height: 1.3;
-  margin: 0 0 12px 0; /* match county project sidebar-title spacing, kill browser default p margin */
+  margin: 0 0 6px 0;
   letter-spacing: 0.01em;
 }
 
@@ -273,14 +273,14 @@ h3 {
   font-weight: 600;
   font-size: 1em;
   color: #f7c320;
-  margin: 20px 0 8px 0; /* match county project step header spacing */
+  margin: 16px 0 5px 0;
 }
 
 .helper-text {
-  font-size: 0.86em;
+  font-size: 0.82em;
   color: #fff;
-  margin: 4px 0 10px 0;
-  line-height: 1.4;
+  margin: 2px 0 8px 0;
+  line-height: 1.35;
 }
 
 /* ========================================
@@ -295,8 +295,8 @@ label {
 
 #municipality-select {
   width: 100%;
-  padding: 12px;
-  margin-bottom: 15px;
+  padding: 10px;
+  margin-bottom: 4px;
   background-color: #363636;
   color: #fff;
   border: 2px solid #4a4a4a;
@@ -310,21 +310,21 @@ label {
 
 /* Scenario Toggle Buttons */
 .button-group {
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 
 .button-group button {
   display: block;
   width: 100%;
-  margin: 0 0 10px 0;
+  margin: 0 0 6px 0;
   background-color: #363636;
   color: #fff;
   border: 3px solid #5a5a5a;
   border-radius: 0;
-  padding: 14px 12px;
+  padding: 10px 12px;
   cursor: pointer;
   text-align: left;
-  font-size: 0.875em;
+  font-size: 0.85em;
   font-weight: 500;
   transition: all 0.2s ease;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
@@ -380,6 +380,70 @@ label {
   background-color: #0b7c72;
   border-color: #0a6b62;
   transform: translateY(-1px);
+}
+
+/* ========================================
+   GEOCODER - sidebar address search
+   ======================================== */
+#geocoder-container {
+  margin-bottom: 6px;
+}
+
+#geocoder-container .mapboxgl-ctrl-geocoder {
+  width: 100% !important;
+  min-width: unset !important;
+  max-width: 100% !important;
+  position: relative;
+}
+
+/* ========================================
+   TOGGLE ALL ASSETS - on/off master switch
+   ======================================== */
+.toggle-all-wrap {
+  margin-bottom: 8px;
+}
+
+.toggle-all-btn {
+  display: block;
+  width: 100%;
+  margin: 0;
+  background: transparent;
+  color: #f7c320;
+  border: 2px solid #f7c320;
+  border-radius: 0;
+  padding: 8px 10px;
+  cursor: pointer;
+  text-align: center;
+  font-size: 0.8em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: all 0.2s ease;
+}
+
+.toggle-all-btn:hover {
+  background: rgba(247, 195, 32, 0.15);
+}
+
+.toggle-all-btn:not(.active) {
+  border-color: #5a5a5a;
+  color: #999;
+}
+
+.toggle-all-btn:not(.active):hover {
+  border-color: #7a7a7a;
+  color: #ccc;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Mobile toggle-all chip */
+.mobile-toggle-all-wrap {
+  margin-bottom: 8px;
+}
+
+.chip-toggle-all.active {
+  background-color: #e5e7eb !important;
+  border-color: #d1d5db !important;
+  color: #000 !important;
 }
 
 /* ========================================
@@ -508,12 +572,12 @@ label {
 
 /* Toggle hint */
 .card-toggle-hint {
-  font-size: 0.8em;
+  font-size: 0.78em;
   color: #000;
   text-align: center;
-  margin: 0 0 10px;
+  margin: 0 0 6px;
   font-weight: 600;
-  padding: 8px 10px;
+  padding: 6px 10px;
   background: #f7c320;
   border-radius: 0px;
   letter-spacing: 0.02em;

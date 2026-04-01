@@ -2,11 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>NEW JERSEY CITIES & FLOOD RISK</title>
+  <title>NJ PUBLIC INFRASTRUCTURE AT RISK (CITY LEVEL)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="styles.css" rel="stylesheet" />
   <script src='https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js'></script>
   <link href='https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css' rel='stylesheet' />
+  <script src='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.0.0/mapbox-gl-geocoder.min.js'></script>
+  <link rel='stylesheet' href='geocoder.css' />
 </head>
 <body>
   
@@ -19,14 +21,13 @@
     <a href="https://rebuildbydesign.github.io/nj-flood-risk/" class="back-to-county">← County View</a>
 
     <!-- Header & Introduction -->
-    <p class="purpose-strong">NEW JERSEY CITIES &amp; FLOOD RISK</p>
+    <p class="purpose-strong">NJ PUBLIC INFRASTRUCTURE AT RISK (CITY LEVEL)</p>
     <p class="helper-text">
-     This tool maps public assets exposed to flooding across 8 New Jersey cities for a closer look.
+      Mapping public assets exposed to flooding across 8 NJ cities.
     </p>
     <!-- Step 1: City Selection -->
     <h3>Step 1: Select a City</h3>
     <p class="helper-text">
-      Focus on one city at a time to understand local exposure.
       Don't see yours? <a href="mailto:jhuynh@rebuildbydesign.org?subject=City%20Request%20-%20NJ%20Flood%20Risk%20Explorer" class="request-city-link"><em>Request a city</em></a>.
     </p>
     <select id="municipality-select">
@@ -39,8 +40,14 @@
       <option value="ASBURY PARK CITY">Asbury Park</option>
       <option value="ATLANTIC CITY">Atlantic City</option>
     </select>
-  
-    
+
+    <!-- Search for an Address (below city dropdown) -->
+    <p class="helper-text" style="margin-top:4px">
+      Or search an address to auto-select a city.
+    </p>
+    <div id="geocoder-container"></div>
+
+
     <!-- Step 2: Toggle Floodplains & Buyouts -->
     <h3>Step 2: Toggle Floodplains &amp; Buyouts</h3>
     <div class="button-group">
@@ -62,6 +69,9 @@
     <!-- Step 3: Legend (dynamically populated by scripts.js) -->
     <div id="legend">
       <h3>Step 3: Explore Exposed Assets</h3>
+      <div class="toggle-all-wrap">
+        <button id="toggle-all-assets" class="toggle-all-btn active">Hide all public assets</button>
+      </div>
       <p class="legend-helper">
         Colored points represent public assets located within the selected floodplain.
       </p>
@@ -177,8 +187,8 @@
 
       <!-- Project title + description -->
       <div class="mobile-sheet-header">
-        <p class="mobile-sheet-title">NEW JERSEY CITIES &amp; FLOOD RISK</p>
-        <p class="mobile-sheet-desc">Mapping public assets exposed to flooding across 8 NJ cities.</p>
+        <p class="mobile-sheet-title">NJ PUBLIC INFRASTRUCTURE AT RISK</p>
+        <p class="mobile-sheet-desc">City-level flood exposure for public assets across 8 NJ cities.</p>
       </div>
 
       <!-- City selector -->
@@ -233,6 +243,12 @@
 
     <!-- Tab content: Assets -->
     <div class="mobile-tab-content hidden" id="mobile-tab-assets">
+      <div class="mobile-toggle-all-wrap">
+        <button id="mobile-toggle-all-assets" class="mobile-chip chip-toggle-all active">
+          <span class="chip-label">All Assets</span>
+          <span class="chip-desc">Toggle visibility</span>
+        </button>
+      </div>
       <div class="mobile-asset-list" id="mobile-asset-list">
         <!-- Populated by JS -->
       </div>

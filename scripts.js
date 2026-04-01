@@ -323,8 +323,9 @@ function loadLayers() {
   }
   const visibleAssetId = `assets_${activeYear}`;
 
-  // Show active asset layer (unless Blue Acres is on)
-  map.setLayoutProperty(visibleAssetId, 'visibility', blueAcresVisible ? 'none' : 'visible');
+  // Show active asset layer (unless Blue Acres is on or all assets toggled off)
+  const assetsHidden = blueAcresVisible || (typeof window._allAssetsVisible === 'function' && !window._allAssetsVisible());
+  map.setLayoutProperty(visibleAssetId, 'visibility', assetsHidden ? 'none' : 'visible');
 
   // Filter to active municipality (respecting hidden asset types)
   map.setFilter('boundary', ['==', ['get', 'MUN'], activeCity]);
@@ -444,8 +445,12 @@ function updateLegend() {
     if (typeof updateMobileFinding === 'function') updateMobileFinding();
 
     // Build legend (cards only — findings are on the map)
+    const _allOn = typeof window._allAssetsVisible === 'function' ? window._allAssetsVisible() : true;
     legend.innerHTML = `
       <h3>Step 3: Explore Exposed Assets</h3>
+      <div class="toggle-all-wrap">
+        <button id="toggle-all-assets" class="toggle-all-btn${_allOn ? ' active' : ''}">${_allOn ? 'Hide all public assets' : 'Show all public assets'}</button>
+      </div>
       <p class="card-toggle-hint">Click a card to show/hide asset type</p>
       <div class="card-scroll-wrapper">
         <div class="card-container"></div>
@@ -456,6 +461,12 @@ function updateLegend() {
         <span class="hint-text"></span>
       </div>
     `;
+
+    // Re-attach toggle-all click listener (since innerHTML replaced the button)
+    const _toggleAllBtn = document.getElementById('toggle-all-assets');
+    if (_toggleAllBtn && typeof window._toggleAllAssets === 'function') {
+      _toggleAllBtn.addEventListener('click', window._toggleAllAssets);
+    }
 
     const container = legend.querySelector('.card-container');
 
@@ -1016,6 +1027,176 @@ map.on('load', () => {
     }
     updateBlueAcresStats();
   };
+
+  // ---- Geocoder (address search) ----
+  const geocoder = new MapboxGeocoder({
+    accessToken: mapboxgl.accessToken,
+    mapboxgl: mapboxgl,
+    marker: {
+      color: '#f7c320'
+    },
+    countries: 'us',
+    bbox: [-75.559614, 38.928519, -73.893979, 41.357423],
+    placeholder: 'Enter Address Here',
+    flyTo: false
+  });
+
+  let geocoderPopup = null;
+
+  geocoder.on('result', (e) => {
+    const coords = e.result.center;
+    const findingCard = document.getElementById('finding-card');
+
+    if (geocoderPopup) { geocoderPopup.remove(); geocoderPopup = null; }
+
+    // Fly to the searched location first
+    map.flyTo({
+      center: coords,
+      zoom: 13,
+      padding: { top: 0, bottom: 0, left: 0, right: window.innerWidth > 1024 ? 410 : 0 },
+      speed: 1.2,
+      curve: 1
+    });
+
+    map.once('moveend', () => {
+      // Add an invisible fill layer over ALL city boundaries for accurate
+      // point-in-polygon hit-testing (the existing boundary layer is line-only)
+      if (!map.getLayer('boundary-fill-query')) {
+        map.addLayer({
+          id: 'boundary-fill-query',
+          type: 'fill',
+          source: 'boundary',
+          paint: { 'fill-opacity': 0 },
+          filter: null   // include all municipalities
+        });
+      } else {
+        map.setFilter('boundary-fill-query', null);
+      }
+
+      // Wait for tiles to render so the fill layer is queryable
+      map.once('idle', () => {
+        let matchedCity = null;
+        const point = map.project(coords);
+        const hits = map.queryRenderedFeatures(point, { layers: ['boundary-fill-query'] });
+
+        if (hits.length > 0) {
+          const mun = hits[0].properties?.MUN;
+          if (mun && _validCities.includes(mun)) {
+            matchedCity = mun;
+          }
+        }
+
+        // Clean up temp layer
+        if (map.getLayer('boundary-fill-query')) map.removeLayer('boundary-fill-query');
+
+        handleGeocoderMatch(matchedCity, coords, findingCard);
+      });
+    });
+  });
+
+  function handleGeocoderMatch(matchedCity, coords, findingCard) {
+    if (matchedCity) {
+      // Auto-select the matched city
+      activeCity = matchedCity;
+      const desktopSelect = document.getElementById('municipality-select');
+      const mobileSelect = document.getElementById('mobile-municipality-select');
+      if (desktopSelect) desktopSelect.value = activeCity;
+      if (mobileSelect) mobileSelect.value = activeCity;
+
+      loadLayers();
+      zoomToMunicipality(activeCity);
+      updateMunicipalityLabel();
+      if (blueAcresVisible) {
+        updateBlueAcresHighlight();
+        updateBlueAcresStats();
+      }
+      if (typeof updateMobileFinding === 'function') updateMobileFinding();
+      if (typeof updateMobileBlueAcresStats === 'function') updateMobileBlueAcresStats();
+    } else {
+      // No matching city — show "not available" popup
+      if (findingCard) findingCard.style.display = 'none';
+
+      geocoderPopup = new mapboxgl.Popup({
+        closeButton: true,
+        maxWidth: '300px',
+        anchor: 'bottom',
+        offset: [0, -10]
+      })
+      .setLngLat(coords)
+      .setHTML(`
+        <div style="padding:6px 4px;font-size:13px;line-height:1.6">
+          <strong>City data not available</strong><br/>
+          This location is not within one of the 8 cities currently mapped.
+          Please request your city by contacting
+          <a href="mailto:info@rebuildbydesign.org" style="color:#3a7fc3">info@rebuildbydesign.org</a>
+        </div>
+      `)
+      .addTo(map);
+
+      geocoderPopup.on('close', () => {
+        if (findingCard) findingCard.style.display = '';
+        geocoderPopup = null;
+      });
+    }
+  }
+
+  geocoder.on('clear', () => {
+    const findingCard = document.getElementById('finding-card');
+    if (findingCard) findingCard.style.display = '';
+    if (geocoderPopup) { geocoderPopup.remove(); geocoderPopup = null; }
+  });
+
+  // Mount geocoder into sidebar container
+  const geocoderContainer = document.getElementById('geocoder-container');
+  if (geocoderContainer) {
+    geocoderContainer.appendChild(geocoder.onAdd(map));
+  }
+
+  // ---- Toggle All Assets button ----
+  let allAssetsVisible = true;
+
+  function setAllAssetsVisibility(visible) {
+    allAssetsVisible = visible;
+
+    // Update button state (desktop + mobile)
+    const desktopBtn = document.getElementById('toggle-all-assets');
+    const mobileBtn = document.getElementById('mobile-toggle-all-assets');
+    if (desktopBtn) {
+      desktopBtn.classList.toggle('active', visible);
+      desktopBtn.textContent = visible ? 'Hide all public assets' : 'Show all public assets';
+    }
+    if (mobileBtn) mobileBtn.classList.toggle('active', visible);
+
+    if (!visible) {
+      // Hide both asset layers
+      ['assets_2025', 'assets_2050'].forEach(id => {
+        if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
+      });
+    } else {
+      // Restore: show the active year's assets (unless Blue Acres is on)
+      const visibleId = `assets_${activeYear}`;
+      if (map.getLayer(visibleId) && !blueAcresVisible) {
+        map.setLayoutProperty(visibleId, 'visibility', 'visible');
+      }
+    }
+
+    // Dim/undim legend cards
+    document.querySelectorAll('#legend .asset-card').forEach(card => {
+      card.classList.toggle('asset-card-off', !visible);
+    });
+    document.querySelectorAll('#mobile-asset-list .asset-card').forEach(card => {
+      card.classList.toggle('asset-card-off', !visible);
+    });
+  }
+
+  // Expose toggle handler globally so updateLegend can re-attach it
+  window._toggleAllAssets = () => setAllAssetsVisibility(!allAssetsVisible);
+
+  document.getElementById('toggle-all-assets')?.addEventListener('click', window._toggleAllAssets);
+  document.getElementById('mobile-toggle-all-assets')?.addEventListener('click', window._toggleAllAssets);
+
+  // Expose for loadLayers to respect
+  window._allAssetsVisible = () => allAssetsVisible;
 
   // ---- Load CSV totals, then initial state ----
   loadMunicipalityTotals().then(() => {
