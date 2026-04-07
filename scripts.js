@@ -93,7 +93,7 @@ const assetLabels = {
   AIRPORT: "Aviation Facilities",
   FIRE: "Fire Departments",
   HOSPITAL: "Hospitals",
-  KCS: "Known Contaminated Sites",
+  KCS: "Contaminated Sites",
   LIBRARY: "Libraries",
   PARK: "Parks",
   POLICE: "Police Stations",
@@ -104,6 +104,8 @@ const assetLabels = {
   SUPERFUND: "Superfund Sites",
   WASTEWATER: "Wastewater Treatment"
 };
+
+const allAssetTypes = Object.keys(assetLabels);
 
 // ========================================
 // ASSET EMOJIS - Icon for each asset type
@@ -323,9 +325,9 @@ function loadLayers() {
   }
   const visibleAssetId = `assets_${activeYear}`;
 
-  // Show active asset layer (unless Blue Acres is on or all assets toggled off)
-  const assetsHidden = blueAcresVisible || (typeof window._allAssetsVisible === 'function' && !window._allAssetsVisible());
-  map.setLayoutProperty(visibleAssetId, 'visibility', assetsHidden ? 'none' : 'visible');
+  // Keep the active asset layer available unless Blue Acres is on.
+  // Individual asset visibility is handled by filters so users can re-enable types after hiding all.
+  map.setLayoutProperty(visibleAssetId, 'visibility', blueAcresVisible ? 'none' : 'visible');
 
   // Filter to active municipality (respecting hidden asset types)
   map.setFilter('boundary', ['==', ['get', 'MUN'], activeCity]);
@@ -408,6 +410,9 @@ function updateLegend() {
     if (map.getLayer(`assets_${inactiveYear}`)) {
       map.setLayoutProperty(`assets_${inactiveYear}`, 'visibility', 'none');
     }
+    if (map.getLayer(`assets_${activeYear}`)) {
+      map.setLayoutProperty(`assets_${activeYear}`, 'visibility', blueAcresVisible ? 'none' : 'visible');
+    }
 
     // Get totals for the active municipality from CSV data
     const munTotals = municipalityTotals[activeCity] || {};
@@ -451,7 +456,7 @@ function updateLegend() {
       <div class="toggle-all-wrap">
         <button id="toggle-all-assets" class="toggle-all-btn${_allOn ? ' active' : ''}">${_allOn ? 'Hide all public assets' : 'Show all public assets'}</button>
       </div>
-      <p class="card-toggle-hint">Click a card to show/hide asset type</p>
+      <p class="card-toggle-hint">Click a public asset card to show/hide</p>
       <div class="card-scroll-wrapper">
         <div class="card-container"></div>
         <div class="card-scroll-fade"></div>
@@ -618,6 +623,7 @@ function applyAssetFilter() {
   }
 
   map.setFilter(assetId, filters);
+  if (typeof window._syncAssetToggleUi === 'function') window._syncAssetToggleUi();
 }
 
 
@@ -1153,50 +1159,59 @@ map.on('load', () => {
   }
 
   // ---- Toggle All Assets button ----
-  let allAssetsVisible = true;
+  function areAllAssetsHidden() {
+    return allAssetTypes.every(type => hiddenAssetTypes.has(type));
+  }
 
-  function setAllAssetsVisibility(visible) {
-    allAssetsVisible = visible;
+  function syncAssetToggleUi() {
+    const hasVisibleTypes = !areAllAssetsHidden();
 
     // Update button state (desktop + mobile)
     const desktopBtn = document.getElementById('toggle-all-assets');
     const mobileBtn = document.getElementById('mobile-toggle-all-assets');
     if (desktopBtn) {
-      desktopBtn.classList.toggle('active', visible);
-      desktopBtn.textContent = visible ? 'Hide all public assets' : 'Show all public assets';
+      desktopBtn.classList.toggle('active', hasVisibleTypes);
+      desktopBtn.textContent = hasVisibleTypes ? 'Hide all public assets' : 'Show all public assets';
     }
-    if (mobileBtn) mobileBtn.classList.toggle('active', visible);
-
-    if (!visible) {
-      // Hide both asset layers
-      ['assets_2025', 'assets_2050'].forEach(id => {
-        if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
-      });
-    } else {
-      // Restore: show the active year's assets (unless Blue Acres is on)
-      const visibleId = `assets_${activeYear}`;
-      if (map.getLayer(visibleId) && !blueAcresVisible) {
-        map.setLayoutProperty(visibleId, 'visibility', 'visible');
-      }
+    if (mobileBtn) {
+      mobileBtn.classList.toggle('active', hasVisibleTypes);
+      const mobileDesc = mobileBtn.querySelector('.chip-desc');
+      if (mobileDesc) mobileDesc.textContent = hasVisibleTypes ? 'Hide all types' : 'Show all types';
     }
 
-    // Dim/undim legend cards
     document.querySelectorAll('#legend .asset-card').forEach(card => {
-      card.classList.toggle('asset-card-off', !visible);
+      const type = card.dataset.assetType;
+      const isHidden = hiddenAssetTypes.has(type);
+      card.classList.toggle('asset-card-off', isHidden);
+      card.title = `Click to ${isHidden ? 'show' : 'hide'} ${(assetLabels[type] || type)} on map`;
     });
     document.querySelectorAll('#mobile-asset-list .asset-card').forEach(card => {
-      card.classList.toggle('asset-card-off', !visible);
+      const type = card.dataset.assetType;
+      const isHidden = hiddenAssetTypes.has(type);
+      card.classList.toggle('asset-card-off', isHidden);
+      card.title = `Click to ${isHidden ? 'show' : 'hide'} ${(assetLabels[type] || type)} on map`;
     });
   }
 
+  function setAllAssetsVisibility(visible) {
+    if (visible) {
+      hiddenAssetTypes.clear();
+    } else {
+      allAssetTypes.forEach(type => hiddenAssetTypes.add(type));
+    }
+    applyAssetFilter();
+  }
+
   // Expose toggle handler globally so updateLegend can re-attach it
-  window._toggleAllAssets = () => setAllAssetsVisibility(!allAssetsVisible);
+  window._toggleAllAssets = () => setAllAssetsVisibility(areAllAssetsHidden());
+  window._syncAssetToggleUi = syncAssetToggleUi;
 
   document.getElementById('toggle-all-assets')?.addEventListener('click', window._toggleAllAssets);
   document.getElementById('mobile-toggle-all-assets')?.addEventListener('click', window._toggleAllAssets);
 
   // Expose for loadLayers to respect
-  window._allAssetsVisible = () => allAssetsVisible;
+  window._allAssetsVisible = () => !areAllAssetsHidden();
+  syncAssetToggleUi();
 
   // ---- Load CSV totals, then initial state ----
   loadMunicipalityTotals().then(() => {
@@ -1697,4 +1712,3 @@ document.querySelectorAll('.tooltip-wrap').forEach(wrap => {
     mobileDL.addEventListener('click', () => desktopDL.click());
   }
 })();
-
