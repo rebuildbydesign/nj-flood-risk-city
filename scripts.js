@@ -352,9 +352,8 @@ function loadLayers() {
   }
   const visibleAssetId = `assets_${activeYear}`;
 
-  // Keep the active asset layer available unless Blue Acres is on.
-  // Individual asset visibility is handled by filters so users can re-enable types after hiding all.
-  map.setLayoutProperty(visibleAssetId, 'visibility', blueAcresVisible ? 'none' : 'visible');
+  // Keep the active asset layer available while filters handle which public assets are hidden.
+  map.setLayoutProperty(visibleAssetId, 'visibility', 'visible');
 
   // Filter to active municipality (respecting hidden asset types)
   map.setFilter('boundary', ['==', ['get', 'MUN'], activeCity]);
@@ -371,6 +370,21 @@ function loadLayers() {
 
   // Update legend after map finishes rendering
   map.once('idle', () => updateLegend());
+}
+
+function syncActiveAssetLayerVisibility() {
+  ['assets_2025', 'assets_2050'].forEach(id => {
+    if (map.getLayer(id)) {
+      map.setLayoutProperty(id, 'visibility', 'none');
+    }
+  });
+
+  if (!activeCity) return;
+
+  const visibleAssetId = `assets_${activeYear}`;
+  if (map.getLayer(visibleAssetId)) {
+    map.setLayoutProperty(visibleAssetId, 'visibility', 'visible');
+  }
 }
 
 // ========================================
@@ -433,14 +447,8 @@ function updateLegend() {
     const total2025 = features2025.length;
     const total2050 = features2050.length;
 
-    // Restore visibility — hide the inactive asset layer
-    const inactiveYear = activeYear === '2025' ? '2050' : '2025';
-    if (map.getLayer(`assets_${inactiveYear}`)) {
-      map.setLayoutProperty(`assets_${inactiveYear}`, 'visibility', 'none');
-    }
-    if (map.getLayer(`assets_${activeYear}`)) {
-      map.setLayoutProperty(`assets_${activeYear}`, 'visibility', blueAcresVisible ? 'none' : 'visible');
-    }
+    // Restore the normal asset visibility state after querying both layers.
+    syncActiveAssetLayerVisibility();
 
     // Get totals for the active municipality from CSV data
     const munTotals = municipalityTotals[activeCity] || {};
@@ -652,6 +660,7 @@ function applyAssetFilter() {
   }
 
   map.setFilter(assetId, filters);
+  syncActiveAssetLayerVisibility();
   if (typeof window._syncAssetToggleUi === 'function') window._syncAssetToggleUi();
 }
 
@@ -1258,17 +1267,14 @@ map.on('load', () => {
     document.getElementById('toggle-blue-acres').classList.toggle('active', blueAcresVisible);
 
     const vis = blueAcresVisible ? 'visible' : 'none';
-    const assetVis = blueAcresVisible ? 'none' : 'visible';
 
     // Show/hide Blue Acres layers
     ['blueacres-fill', 'blueacres-outline', 'blueacres-clusters', 'blueacres-cluster-count'].forEach(id => {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
     });
 
-    // Hide/show asset point layers (mutually exclusive with Blue Acres)
-    if (map.getLayer(`assets_${activeYear}`)) {
-      map.setLayoutProperty(`assets_${activeYear}`, 'visibility', assetVis);
-    }
+    // Keep public assets visible according to the user's active type filters.
+    syncActiveAssetLayerVisibility();
 
     if (blueAcresVisible) {
       updateBlueAcresHighlight();
