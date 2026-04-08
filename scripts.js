@@ -44,6 +44,7 @@ let popup = null;
 
 // Boundary bounds cache - stores precomputed map bounds for each municipality
 const boundaryBoundsByMun = {};
+const boundaryFeaturesByMun = {};
 
 // Municipality label (now a finding card element)
 let municipalityLabel = null; // kept for compatibility
@@ -140,6 +141,12 @@ const municipalityLabels = {
   "ATLANTIC CITY": "Atlantic City"
 };
 
+const normalizedCityKeyLookup = {};
+Object.entries(municipalityLabels).forEach(([cityKey, label]) => {
+  normalizedCityKeyLookup[normalizeCityName(cityKey)] = cityKey;
+  normalizedCityKeyLookup[normalizeCityName(label)] = cityKey;
+});
+
 // ========================================
 // CSV ASSET NAME → APP KEY MAPPING
 // ========================================
@@ -174,6 +181,18 @@ function hexToRgba(hex, alpha) {
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
   return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function normalizeCityName(value) {
+  // FIXED: Only strip a trailing "CITY" (with optional preceding space), not every
+  // occurrence. This prevents "ATLANTIC CITY" from becoming "ATLANTIC" and
+  // "JERSEY CITY" from becoming "JERSEY", which caused false matches.
+  return (value || '')
+    .toUpperCase()
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\s+CITY$/i, '');
 }
 
 // Expanded color match pairs for Mapbox expressions (includes normalized + alias names)
@@ -664,6 +683,192 @@ function zoomToMunicipality(munName) {
   });
 }
 
+function isPointOnSegment(point, start, end) {
+  const [x, y] = point;
+  const [x1, y1] = start;
+  const [x2, y2] = end;
+  const cross = (y - y1) * (x2 - x1) - (x - x1) * (y2 - y1);
+  if (Math.abs(cross) > 1e-10) return false;
+
+  const dot = (x - x1) * (x2 - x1) + (y - y1) * (y2 - y1);
+  if (dot < 0) return false;
+
+  const squaredLength = ((x2 - x1) ** 2) + ((y2 - y1) ** 2);
+  return dot <= squaredLength;
+}
+
+function isPointInRing(point, ring) {
+  let inside = false;
+
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const current = ring[i];
+    const previous = ring[j];
+
+    if (isPointOnSegment(point, current, previous)) return true;
+
+    const xi = current[0];
+    const yi = current[1];
+    const xj = previous[0];
+    const yj = previous[1];
+
+    const intersects = ((yi > point[1]) !== (yj > point[1])) &&
+      (point[0] < ((xj - xi) * (point[1] - yi)) / ((yj - yi) || Number.EPSILON) + xi);
+
+    if (intersects) inside = !inside;
+  }
+
+  return inside;
+}
+
+function isPointInPolygon(point, rings) {
+  if (!rings?.length || !isPointInRing(point, rings[0])) return false;
+
+  for (let i = 1; i < rings.length; i++) {
+    if (isPointInRing(point, rings[i])) return false;
+  }
+
+  return true;
+}
+
+function findAnalyzedCityAtLngLat(coords) {
+  for (const city of _validCities) {
+    const feature = boundaryFeaturesByMun[city];
+    const geometry = feature?.geometry;
+    if (!geometry) continue;
+
+    if (geometry.type === 'Polygon' && isPointInPolygon(coords, geometry.coordinates)) {
+      return city;
+    }
+
+    if (geometry.type === 'MultiPolygon') {
+      const isInside = geometry.coordinates.some(polygon => isPointInPolygon(coords, polygon));
+      if (isInside) return city;
+    }
+  }
+
+  return null;
+}
+
+function findAnalyzedCityFromGeocoderResult(result) {
+  const candidates = [
+    result?.text,
+    result?.place_name,
+    result?.properties?.name,
+    ...(result?.context || []).map(item => item?.text),
+    ...(result?.context || []).map(item => item?.place_name)
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    const normalizedCandidate = normalizeCityName(candidate);
+
+    for (const [normalizedName, cityKey] of Object.entries(normalizedCityKeyLookup)) {
+      if (
+        normalizedCandidate === normalizedName ||
+        normalizedCandidate.startsWith(`${normalizedName} `) ||
+        normalizedCandidate.includes(` ${normalizedName} `) ||
+        normalizedCandidate.endsWith(` ${normalizedName}`)
+      ) {
+        return cityKey;
+      }
+    }
+  }
+
+  return null;
+}
+
+function findAnalyzedCityFromText(value) {
+  const normalizedValue = normalizeCityName(value);
+  if (!normalizedValue) return null;
+
+  for (const [normalizedName, cityKey] of Object.entries(normalizedCityKeyLookup)) {
+    if (
+      normalizedValue === normalizedName ||
+      normalizedValue.startsWith(`${normalizedName} `) ||
+      normalizedValue.includes(` ${normalizedName} `) ||
+      normalizedValue.endsWith(` ${normalizedName}`)
+    ) {
+      return cityKey;
+    }
+  }
+
+  return null;
+}
+
+function setActiveCitySelection(cityKey) {
+  if (!cityKey || !_validCities.includes(cityKey)) return;
+
+  activeCity = cityKey;
+
+  const desktopSelect = document.getElementById('municipality-select');
+  const mobileSelect = document.getElementById('mobile-municipality-select');
+  if (desktopSelect) desktopSelect.value = activeCity;
+  if (mobileSelect) mobileSelect.value = activeCity;
+
+  // FIXED: Clean up any lingering geocoder popup when switching cities
+  // (e.g. user searched a non-analyzed address, then picks a city from dropdown)
+  const existingPopup = document.querySelector('.mapboxgl-popup');
+  if (existingPopup) {
+    // Only remove if it's our "city data not available" popup, not the asset hover popup
+    const popupText = existingPopup.textContent || '';
+    if (popupText.includes('City data not available')) {
+      existingPopup.remove();
+    }
+  }
+  const findingCard = document.getElementById('finding-card');
+  if (findingCard) findingCard.style.display = '';
+
+  loadLayers();
+  zoomToMunicipality(activeCity);
+  updateMunicipalityLabel();
+
+  if (blueAcresVisible) {
+    updateBlueAcresHighlight();
+    updateBlueAcresStats();
+  }
+
+  if (typeof updateMobileFinding === 'function') updateMobileFinding();
+  if (typeof updateMobileBlueAcresStats === 'function') updateMobileBlueAcresStats();
+}
+
+function getLocalCityGeocoderResults(query) {
+  const normalizedQuery = normalizeCityName(query);
+  if (!normalizedQuery) return [];
+
+  return _validCities
+    .map(cityKey => {
+      const label = municipalityLabels[cityKey];
+      const normalizedLabel = normalizeCityName(label);
+      const bounds = boundaryBoundsByMun[cityKey];
+      if (!label || !bounds) return null;
+
+      if (
+        normalizedLabel === normalizedQuery ||
+        normalizedLabel.startsWith(normalizedQuery) ||
+        normalizedQuery.startsWith(normalizedLabel)
+      ) {
+        const center = bounds.getCenter();
+        return {
+          type: 'Feature',
+          center: [center.lng, center.lat],
+          geometry: {
+            type: 'Point',
+            coordinates: [center.lng, center.lat]
+          },
+          place_name: `${label}, New Jersey`,
+          place_type: ['place'],
+          properties: {
+            short_code: 'us-nj',
+            analyzed_city_key: cityKey
+          },
+          text: label
+        };
+      }
+
+      return null;
+    })
+    .filter(Boolean);
+}
+
 
 // ========================================
 // FINDING CARD - City name + key finding overlay
@@ -759,6 +964,7 @@ map.on('load', () => {
         }
         
         boundaryBoundsByMun[mun] = bounds;
+        if (_validCities.includes(mun)) boundaryFeaturesByMun[mun] = f;
       });
       
       // Initial zoom after bounds are ready
@@ -987,14 +1193,7 @@ map.on('load', () => {
   
   // ---- Municipality dropdown event ----
   document.getElementById('municipality-select').addEventListener('change', e => {
-    activeCity = e.target.value;
-    loadLayers();
-    zoomToMunicipality(activeCity);
-    updateMunicipalityLabel();
-    if (blueAcresVisible) {
-      updateBlueAcresHighlight();
-      updateBlueAcresStats();
-    }
+    setActiveCitySelection(e.target.value);
   });
   
   // ---- Year toggle button events (independent on/off) ----
@@ -1035,9 +1234,13 @@ map.on('load', () => {
   };
 
   // ---- Geocoder (address search) ----
+  // FIXED: Declare geocoderContainer BEFORE geocoder so it's available in event handlers
+  const geocoderContainer = document.getElementById('geocoder-container');
+
   const geocoder = new MapboxGeocoder({
     accessToken: mapboxgl.accessToken,
     mapboxgl: mapboxgl,
+    localGeocoder: getLocalCityGeocoderResults,
     marker: {
       color: '#f7c320'
     },
@@ -1053,9 +1256,38 @@ map.on('load', () => {
     const coords = e.result.center;
     const findingCard = document.getElementById('finding-card');
 
+    // Clean up any previous popup
     if (geocoderPopup) { geocoderPopup.remove(); geocoderPopup = null; }
 
-    // Fly to the searched location first
+    // FIXED: Stage 0 — Check if this is a local geocoder result with a pre-set city key.
+    // When user selects one of our 8 cities from the local suggestions, the result
+    // already carries the exact city key — no fuzzy matching needed.
+    const directCityKey = e.result?.properties?.analyzed_city_key;
+    if (directCityKey && _validCities.includes(directCityKey)) {
+      handleGeocoderMatch(directCityKey, coords, findingCard);
+      return;
+    }
+
+    // FIXED: Stage 1 — Read typed query from the geocoder input (geocoderContainer
+    // is now declared above, so this actually works)
+    const geocoderInput = geocoderContainer?.querySelector('input');
+    const typedQuery = geocoderInput?.value || '';
+
+    // Three-stage fallback matching:
+    //   1. Text typed by user (city name in the search box)
+    //   2. Point-in-polygon (address coordinates fall inside a city boundary)
+    //   3. Geocoder result metadata (place_name, context fields)
+    const matchedCity =
+      findAnalyzedCityFromText(typedQuery) ||
+      findAnalyzedCityAtLngLat(coords) ||
+      findAnalyzedCityFromGeocoderResult(e.result);
+
+    if (matchedCity) {
+      handleGeocoderMatch(matchedCity, coords, findingCard);
+      return;
+    }
+
+    // No matching city — fly to the searched location and show "not available" message
     map.flyTo({
       center: coords,
       zoom: 13,
@@ -1064,63 +1296,28 @@ map.on('load', () => {
       curve: 1
     });
 
-    map.once('moveend', () => {
-      // Add an invisible fill layer over ALL city boundaries for accurate
-      // point-in-polygon hit-testing (the existing boundary layer is line-only)
-      if (!map.getLayer('boundary-fill-query')) {
-        map.addLayer({
-          id: 'boundary-fill-query',
-          type: 'fill',
-          source: 'boundary',
-          paint: { 'fill-opacity': 0 },
-          filter: null   // include all municipalities
-        });
-      } else {
-        map.setFilter('boundary-fill-query', null);
-      }
-
-      // Wait for tiles to render so the fill layer is queryable
-      map.once('idle', () => {
-        let matchedCity = null;
-        const point = map.project(coords);
-        const hits = map.queryRenderedFeatures(point, { layers: ['boundary-fill-query'] });
-
-        if (hits.length > 0) {
-          const mun = hits[0].properties?.MUN;
-          if (mun && _validCities.includes(mun)) {
-            matchedCity = mun;
-          }
-        }
-
-        // Clean up temp layer
-        if (map.getLayer('boundary-fill-query')) map.removeLayer('boundary-fill-query');
-
-        handleGeocoderMatch(matchedCity, coords, findingCard);
-      });
-    });
+    handleGeocoderMatch(null, coords, findingCard);
   });
 
   function handleGeocoderMatch(matchedCity, coords, findingCard) {
     if (matchedCity) {
-      // Auto-select the matched city
-      activeCity = matchedCity;
-      const desktopSelect = document.getElementById('municipality-select');
-      const mobileSelect = document.getElementById('mobile-municipality-select');
-      if (desktopSelect) desktopSelect.value = activeCity;
-      if (mobileSelect) mobileSelect.value = activeCity;
+      // FIXED: Remove the geocoder's default yellow marker when we match a city,
+      // because setActiveCitySelection will zoom to the full city bounds
+      // and a stray marker at the searched address is confusing.
+      const markerEl = geocoderContainer?.querySelector('.mapboxgl-marker');
+      if (markerEl) markerEl.style.display = 'none';
 
-      loadLayers();
-      zoomToMunicipality(activeCity);
-      updateMunicipalityLabel();
-      if (blueAcresVisible) {
-        updateBlueAcresHighlight();
-        updateBlueAcresStats();
-      }
-      if (typeof updateMobileFinding === 'function') updateMobileFinding();
-      if (typeof updateMobileBlueAcresStats === 'function') updateMobileBlueAcresStats();
+      setActiveCitySelection(matchedCity);
+
+      // Re-show the finding card (it may have been hidden by a previous "not available" search)
+      if (findingCard) findingCard.style.display = '';
     } else {
-      // No matching city — show "not available" popup
+      // No matching city — show "not available" popup by the marker
       if (findingCard) findingCard.style.display = 'none';
+
+      // FIXED: Make sure the marker is visible for non-matching addresses
+      const markerEl = geocoderContainer?.querySelector('.mapboxgl-marker');
+      if (markerEl) markerEl.style.display = '';
 
       geocoderPopup = new mapboxgl.Popup({
         closeButton: true,
@@ -1150,10 +1347,12 @@ map.on('load', () => {
     const findingCard = document.getElementById('finding-card');
     if (findingCard) findingCard.style.display = '';
     if (geocoderPopup) { geocoderPopup.remove(); geocoderPopup = null; }
+    // Restore marker visibility for next search
+    const markerEl = geocoderContainer?.querySelector('.mapboxgl-marker');
+    if (markerEl) markerEl.style.display = '';
   });
 
   // Mount geocoder into sidebar container
-  const geocoderContainer = document.getElementById('geocoder-container');
   if (geocoderContainer) {
     geocoderContainer.appendChild(geocoder.onAdd(map));
   }
@@ -1512,17 +1711,7 @@ document.querySelectorAll('.tooltip-wrap').forEach(wrap => {
 
   if (mobileSelect) {
     mobileSelect.addEventListener('change', e => {
-      activeCity = e.target.value;
-      if (desktopSelect) desktopSelect.value = activeCity;
-      loadLayers();
-      zoomToMunicipality(activeCity);
-      updateMunicipalityLabel();
-      if (blueAcresVisible) {
-        updateBlueAcresHighlight();
-        updateBlueAcresStats();
-      }
-      updateMobileBlueAcresStats();
-      updateMobileFinding();
+      setActiveCitySelection(e.target.value);
     });
   }
 
