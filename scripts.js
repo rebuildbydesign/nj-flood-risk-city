@@ -313,6 +313,14 @@ function loadMunicipalityTotals() {
 // Toggle between 2025 and 2050 scenarios
 // ========================================
 function loadLayers() {
+  // Guard: if no city is active (e.g. user searched outside the 8 cities), hide everything
+  if (!activeCity) {
+    ['assets_2025', 'assets_2050', 'floodplain_2025', 'floodplain_2050', 'boundary'].forEach(id => {
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
+    });
+    return;
+  }
+
   // Hide all asset layers first
   ["assets_2025", "assets_2050"].forEach(id => {
     if (map.getLayer(id)) {
@@ -406,6 +414,7 @@ function countByType(features) {
 function updateLegend() {
   const legend = document.getElementById('legend');
   if (!legend) return;
+  if (!activeCity) { legend.innerHTML = ''; return; }
 
   // Temporarily make both layers visible to query tiles
   ['assets_2025', 'assets_2050'].forEach(id => {
@@ -625,6 +634,7 @@ function updateLegend() {
 // Updates map filter to hide/show asset types
 // ========================================
 function applyAssetFilter() {
+  if (!activeCity) return;
   const assetId = `assets_${activeYear}`;
   if (!map.getLayer(assetId)) return;
 
@@ -683,38 +693,26 @@ function zoomToMunicipality(munName) {
   });
 }
 
-function isPointOnSegment(point, start, end) {
-  const [x, y] = point;
-  const [x1, y1] = start;
-  const [x2, y2] = end;
-  const cross = (y - y1) * (x2 - x1) - (x - x1) * (y2 - y1);
-  if (Math.abs(cross) > 1e-10) return false;
-
-  const dot = (x - x1) * (x2 - x1) + (y - y1) * (y2 - y1);
-  if (dot < 0) return false;
-
-  const squaredLength = ((x2 - x1) ** 2) + ((y2 - y1) ** 2);
-  return dot <= squaredLength;
-}
-
 function isPointInRing(point, ring) {
+  // Standard ray-casting algorithm for point-in-polygon.
+  // NOTE: The previous isPointOnSegment check was removed because it had a
+  // critical bug: degenerate zero-length segments (where start === end) caused
+  // it to return true for ANY point, making every coordinate in the world
+  // match as "inside" any polygon containing such a segment.
   let inside = false;
+  const [px, py] = point;
 
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const current = ring[i];
-    const previous = ring[j];
+    const xi = ring[i][0], yi = ring[i][1];
+    const xj = ring[j][0], yj = ring[j][1];
 
-    if (isPointOnSegment(point, current, previous)) return true;
+    // Skip degenerate (zero-length) segments
+    if (xi === xj && yi === yj) continue;
 
-    const xi = current[0];
-    const yi = current[1];
-    const xj = previous[0];
-    const yj = previous[1];
-
-    const intersects = ((yi > point[1]) !== (yj > point[1])) &&
-      (point[0] < ((xj - xi) * (point[1] - yi)) / ((yj - yi) || Number.EPSILON) + xi);
-
-    if (intersects) inside = !inside;
+    if (((yi > py) !== (yj > py)) &&
+        (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
   }
 
   return inside;
@@ -750,24 +748,33 @@ function findAnalyzedCityAtLngLat(coords) {
 }
 
 function findAnalyzedCityFromGeocoderResult(result) {
-  const candidates = [
-    result?.text,
-    result?.place_name,
-    result?.properties?.name,
-    ...(result?.context || []).map(item => item?.text),
-    ...(result?.context || []).map(item => item?.place_name)
-  ].filter(Boolean);
+  // FIXED: Only check the result's primary text and the "place"-type context items.
+  // Previously this also checked place_name (e.g. "Hoboken, New Jersey, United States")
+  // which contains "JERSEY" as a substring, causing any NJ address to falsely match
+  // to Jersey City. Now we only look at individual city/place-level text fields
+  // and require an EXACT match after normalization — no substring matching.
+  const candidates = [];
+
+  // The result's own text (usually the searched place name itself, e.g. "Hoboken")
+  if (result?.text) candidates.push(result.text);
+
+  // Only check context items that represent a "place" (city-level), not state/country/region
+  if (result?.context) {
+    for (const item of result.context) {
+      if (item?.id?.startsWith('place')) {
+        if (item.text) candidates.push(item.text);
+      }
+    }
+  }
 
   for (const candidate of candidates) {
     const normalizedCandidate = normalizeCityName(candidate);
 
     for (const [normalizedName, cityKey] of Object.entries(normalizedCityKeyLookup)) {
-      if (
-        normalizedCandidate === normalizedName ||
-        normalizedCandidate.startsWith(`${normalizedName} `) ||
-        normalizedCandidate.includes(` ${normalizedName} `) ||
-        normalizedCandidate.endsWith(` ${normalizedName}`)
-      ) {
+      // FIXED: Exact match only — no substring/startsWith matching.
+      // This prevents "NEW JERSEY" from matching "JERSEY" (Jersey City),
+      // or "NEWARK AVENUE" from matching "NEWARK" (Newark).
+      if (normalizedCandidate === normalizedName) {
         return cityKey;
       }
     }
@@ -780,13 +787,15 @@ function findAnalyzedCityFromText(value) {
   const normalizedValue = normalizeCityName(value);
   if (!normalizedValue) return null;
 
+  // FIXED: After the user selects a geocoder suggestion, the input field contains
+  // the full resolved text like "Hoboken, New Jersey, United States".
+  // Substring matching on this would find "JERSEY" inside "NEW JERSEY" and
+  // falsely match to Jersey City. So we only do an exact match on the full text,
+  // OR match the first segment before a comma (the actual place name the user typed).
+  const firstSegment = normalizeCityName(value.split(',')[0]);
+
   for (const [normalizedName, cityKey] of Object.entries(normalizedCityKeyLookup)) {
-    if (
-      normalizedValue === normalizedName ||
-      normalizedValue.startsWith(`${normalizedName} `) ||
-      normalizedValue.includes(` ${normalizedName} `) ||
-      normalizedValue.endsWith(` ${normalizedName}`)
-    ) {
+    if (normalizedValue === normalizedName || firstSegment === normalizedName) {
       return cityKey;
     }
   }
@@ -828,6 +837,40 @@ function setActiveCitySelection(cityKey) {
 
   if (typeof updateMobileFinding === 'function') updateMobileFinding();
   if (typeof updateMobileBlueAcresStats === 'function') updateMobileBlueAcresStats();
+}
+
+// Deactivate city selection — used when a geocoder search lands outside the 8 analyzed cities.
+// Clears the dropdown, hides all city-specific layers, and hides the finding card.
+function deactivateCity() {
+  activeCity = null;
+
+  // Reset both dropdowns to the blank placeholder
+  const desktopSelect = document.getElementById('municipality-select');
+  const mobileSelect = document.getElementById('mobile-municipality-select');
+  if (desktopSelect) desktopSelect.value = '';
+  if (mobileSelect) mobileSelect.value = '';
+
+  // Hide all city-specific map layers
+  ['boundary', 'floodplain_2025', 'floodplain_2050', 'assets_2025', 'assets_2050'].forEach(id => {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
+  });
+
+  // Hide Blue Acres layers too if visible
+  if (blueAcresVisible) {
+    ['blueacres-fill', 'blueacres-outline', 'blueacres-clusters', 'blueacres-cluster-count'].forEach(id => {
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
+    });
+  }
+
+  // Hide the finding card and clear legend
+  const findingCard = document.getElementById('finding-card');
+  if (findingCard) findingCard.style.display = 'none';
+
+  const legend = document.getElementById('legend');
+  if (legend) legend.innerHTML = '';
+
+  const mobileLegend = document.getElementById('mobile-asset-list');
+  if (mobileLegend) mobileLegend.innerHTML = '';
 }
 
 function getLocalCityGeocoderResults(query) {
@@ -1253,69 +1296,60 @@ map.on('load', () => {
   let geocoderPopup = null;
 
   geocoder.on('result', (e) => {
+    console.log('[Geocoder] result event fired', e.result);
     const coords = e.result.center;
     const findingCard = document.getElementById('finding-card');
 
     // Clean up any previous popup
     if (geocoderPopup) { geocoderPopup.remove(); geocoderPopup = null; }
 
-    // FIXED: Stage 0 — Check if this is a local geocoder result with a pre-set city key.
-    // When user selects one of our 8 cities from the local suggestions, the result
-    // already carries the exact city key — no fuzzy matching needed.
+    // ---- Determine matched city using 3 strategies ----
+    let matchedCity = null;
+
+    // Strategy 1: Direct city key from our local geocoder suggestions
     const directCityKey = e.result?.properties?.analyzed_city_key;
     if (directCityKey && _validCities.includes(directCityKey)) {
-      handleGeocoderMatch(directCityKey, coords, findingCard);
-      return;
+      matchedCity = directCityKey;
+      console.log('[Geocoder] Matched via local city key:', matchedCity);
     }
 
-    // FIXED: Stage 1 — Read typed query from the geocoder input (geocoderContainer
-    // is now declared above, so this actually works)
-    const geocoderInput = geocoderContainer?.querySelector('input');
-    const typedQuery = geocoderInput?.value || '';
-
-    // Three-stage fallback matching:
-    //   1. Text typed by user (city name in the search box)
-    //   2. Point-in-polygon (address coordinates fall inside a city boundary)
-    //   3. Geocoder result metadata (place_name, context fields)
-    const matchedCity =
-      findAnalyzedCityFromText(typedQuery) ||
-      findAnalyzedCityAtLngLat(coords) ||
-      findAnalyzedCityFromGeocoderResult(e.result);
-
-    if (matchedCity) {
-      handleGeocoderMatch(matchedCity, coords, findingCard);
-      return;
+    // Strategy 2: Point-in-polygon — do the coordinates land inside one of our 8 cities?
+    if (!matchedCity) {
+      matchedCity = findAnalyzedCityAtLngLat(coords);
+      if (matchedCity) console.log('[Geocoder] Matched via point-in-polygon:', matchedCity);
     }
 
-    // No matching city — fly to the searched location and show "not available" message
-    map.flyTo({
-      center: coords,
-      zoom: 13,
-      padding: { top: 0, bottom: 0, left: 0, right: window.innerWidth > 1024 ? 410 : 0 },
-      speed: 1.2,
-      curve: 1
-    });
+    // Strategy 3: Check geocoder result metadata — only the "place" context field
+    if (!matchedCity) {
+      matchedCity = findAnalyzedCityFromGeocoderResult(e.result);
+      if (matchedCity) console.log('[Geocoder] Matched via geocoder result metadata:', matchedCity);
+    }
 
-    handleGeocoderMatch(null, coords, findingCard);
-  });
+    console.log('[Geocoder] Final matchedCity:', matchedCity);
 
-  function handleGeocoderMatch(matchedCity, coords, findingCard) {
+    // ---- Act on the result ----
     if (matchedCity) {
-      // FIXED: Remove the geocoder's default yellow marker when we match a city,
-      // because setActiveCitySelection will zoom to the full city bounds
-      // and a stray marker at the searched address is confusing.
+      // Hide the geocoder marker (we're zooming to the full city instead)
       const markerEl = geocoderContainer?.querySelector('.mapboxgl-marker');
       if (markerEl) markerEl.style.display = 'none';
 
       setActiveCitySelection(matchedCity);
-
-      // Re-show the finding card (it may have been hidden by a previous "not available" search)
       if (findingCard) findingCard.style.display = '';
     } else {
-      // No matching city — show "not available" popup by the marker
-      if (findingCard) findingCard.style.display = 'none';
+      // NOT one of our 8 cities — deactivate everything and show the popup
+      console.log('[Geocoder] No match — deactivating city, showing popup');
+      deactivateCity();
 
-      // FIXED: Make sure the marker is visible for non-matching addresses
+      // Zoom to the searched location
+      map.flyTo({
+        center: coords,
+        zoom: 13,
+        padding: { top: 0, bottom: 0, left: 0, right: window.innerWidth > 1024 ? 410 : 0 },
+        speed: 1.2,
+        curve: 1
+      });
+
+      // Ensure the yellow marker is visible at the searched address
       const markerEl = geocoderContainer?.querySelector('.mapboxgl-marker');
       if (markerEl) markerEl.style.display = '';
 
@@ -1337,19 +1371,24 @@ map.on('load', () => {
       .addTo(map);
 
       geocoderPopup.on('close', () => {
-        if (findingCard) findingCard.style.display = '';
         geocoderPopup = null;
       });
     }
-  }
+  });
 
   geocoder.on('clear', () => {
-    const findingCard = document.getElementById('finding-card');
-    if (findingCard) findingCard.style.display = '';
     if (geocoderPopup) { geocoderPopup.remove(); geocoderPopup = null; }
     // Restore marker visibility for next search
     const markerEl = geocoderContainer?.querySelector('.mapboxgl-marker');
     if (markerEl) markerEl.style.display = '';
+
+    // If city was deactivated (non-analyzed search), restore default city
+    if (!activeCity) {
+      setActiveCitySelection('NEWARK CITY');
+    } else {
+      const findingCard = document.getElementById('finding-card');
+      if (findingCard) findingCard.style.display = '';
+    }
   });
 
   // Mount geocoder into sidebar container
