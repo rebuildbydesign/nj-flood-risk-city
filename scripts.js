@@ -91,9 +91,9 @@ const colors = {
 // ASSET LABELS - User-friendly display names
 // ========================================
 const assetLabels = {
-  AIRPORT: "Aviation Facilities",
+  AIRPORT: "Airports Facilities",
   FIRE: "Fire Departments",
-  HOSPITAL: "Hospitals",
+  HOSPITAL: "Hospitals Facilities",
   KCS: "Contaminated Sites",
   LIBRARY: "Libraries",
   PARK: "Parks",
