@@ -4,6 +4,8 @@
   <meta charset="utf-8" />
   <title>NJ Underwater: Public Infrastructure at Risk (Cities)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://rebuildbydesign.github.io" crossorigin />
+  <link rel="dns-prefetch" href="//rebuildbydesign.github.io" />
   <link href="styles.css" rel="stylesheet" />
   <script src='https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js'></script>
   <link href='https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css' rel='stylesheet' />
@@ -159,6 +161,16 @@
       <div class="finding-label">KEY FINDING</div>
       <p class="finding-city-name" id="finding-city-name"></p>
       <p class="finding-text" id="finding-text"></p>
+      <a
+        id="finding-fact-sheet-btn"
+        class="finding-fact-sheet-btn"
+        href="https://rebuildbydesign.github.io/NJ-City-Fact-Sheet/?city=Newark"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        DOWNLOAD NEWARK FACT SHEET
+      </a>
+      <p id="finding-fact-sheet-status" class="fact-sheet-status" aria-live="polite"></p>
     </div>
   </div>
 
@@ -220,6 +232,16 @@
       <div class="mobile-finding" id="mobile-finding">
         <div class="mobile-finding-label">KEY FINDING</div>
         <p class="mobile-finding-text" id="mobile-finding-text"></p>
+        <a
+          id="mobile-finding-fact-sheet-btn"
+          class="finding-fact-sheet-btn mobile-fact-sheet-btn"
+          href="https://rebuildbydesign.github.io/NJ-City-Fact-Sheet/?city=Newark"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          DOWNLOAD NEWARK FACT SHEET
+        </a>
+        <p id="mobile-finding-fact-sheet-status" class="fact-sheet-status mobile-fact-sheet-status" aria-live="polite"></p>
       </div>
 
       <!-- Toggle Floodplains & Buyouts -->

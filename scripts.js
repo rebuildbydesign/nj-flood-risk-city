@@ -141,6 +141,19 @@ const municipalityLabels = {
   "ATLANTIC CITY": "Atlantic City"
 };
 
+const municipalityFactSheetUrls = {
+  "NEWARK CITY": "https://rebuildbydesign.github.io/NJ-City-Fact-Sheet/?city=Newark",
+  "ASBURY PARK CITY": "https://rebuildbydesign.github.io/NJ-City-Fact-Sheet/?city=Asbury+Park+City",
+  "ATLANTIC CITY": "https://rebuildbydesign.github.io/NJ-City-Fact-Sheet/?city=Atlantic+City",
+  "CAMDEN CITY": "https://rebuildbydesign.github.io/NJ-City-Fact-Sheet/?city=Camden",
+  "ELIZABETH CITY": "https://rebuildbydesign.github.io/NJ-City-Fact-Sheet/?city=Elizabeth",
+  "JERSEY CITY": "https://rebuildbydesign.github.io/NJ-City-Fact-Sheet/?city=Jersey+City",
+  "PATERSON CITY": "https://rebuildbydesign.github.io/NJ-City-Fact-Sheet/?city=Paterson",
+  "TRENTON CITY": "https://rebuildbydesign.github.io/NJ-City-Fact-Sheet/?city=Trenton"
+};
+
+const factSheetStatusTimeouts = {};
+
 const normalizedCityKeyLookup = {};
 Object.entries(municipalityLabels).forEach(([cityKey, label]) => {
   normalizedCityKeyLookup[normalizeCityName(cityKey)] = cityKey;
@@ -874,12 +887,15 @@ function deactivateCity() {
   // Hide the finding card and clear legend
   const findingCard = document.getElementById('finding-card');
   if (findingCard) findingCard.style.display = 'none';
+  updateFactSheetButtons();
 
   const legend = document.getElementById('legend');
   if (legend) legend.innerHTML = '';
 
   const mobileLegend = document.getElementById('mobile-asset-list');
   if (mobileLegend) mobileLegend.innerHTML = '';
+
+  if (typeof updateMobileFinding === 'function') updateMobileFinding();
 }
 
 function getLocalCityGeocoderResults(query) {
@@ -931,10 +947,97 @@ function updateMunicipalityLabel() {
   if (!el) return;
   const cityDisplayName = municipalityLabels[activeCity] || activeCity;
   el.textContent = cityDisplayName;
+  updateFactSheetButtons();
 
   // Re-show the finding card when switching cities (in case user closed it)
   const card = document.getElementById('finding-card');
   if (card) card.style.display = '';
+}
+
+function updateFactSheetButtons() {
+  const cityDisplayName = municipalityLabels[activeCity] || '';
+  const href = municipalityFactSheetUrls[activeCity];
+  const label = cityDisplayName
+    ? `DOWNLOAD ${cityDisplayName.toUpperCase()} FACT SHEET`
+    : 'DOWNLOAD FACT SHEET';
+
+  ['finding-fact-sheet-btn', 'mobile-finding-fact-sheet-btn'].forEach((id) => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+
+    btn.textContent = label;
+    btn.classList.remove('is-loading');
+
+    if (href) {
+      btn.href = href;
+      btn.style.display = '';
+      btn.setAttribute('aria-label', label);
+    } else {
+      btn.removeAttribute('href');
+      btn.style.display = 'none';
+      btn.removeAttribute('aria-label');
+    }
+  });
+
+  setFactSheetStatus('', { persist: false });
+}
+
+function setFactSheetStatus(message, options = {}) {
+  const { persist = true } = options;
+  ['finding-fact-sheet-status', 'mobile-finding-fact-sheet-status'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+
+    if (factSheetStatusTimeouts[id]) {
+      clearTimeout(factSheetStatusTimeouts[id]);
+      delete factSheetStatusTimeouts[id];
+    }
+
+    el.textContent = message;
+    el.classList.toggle('visible', Boolean(message));
+
+    if (message && !persist) {
+      factSheetStatusTimeouts[id] = window.setTimeout(() => {
+        el.textContent = '';
+        el.classList.remove('visible');
+        delete factSheetStatusTimeouts[id];
+      }, 3200);
+    }
+  });
+}
+
+function attachFactSheetButtonHandlers() {
+  ['finding-fact-sheet-btn', 'mobile-finding-fact-sheet-btn'].forEach((id) => {
+    const btn = document.getElementById(id);
+    if (!btn || btn.dataset.factSheetBound === 'true') return;
+
+    btn.dataset.factSheetBound = 'true';
+    btn.addEventListener('click', (event) => {
+      const href = municipalityFactSheetUrls[activeCity] || btn.getAttribute('href');
+      if (!href) {
+        event.preventDefault();
+        return;
+      }
+      event.preventDefault();
+
+      document.querySelectorAll('.finding-fact-sheet-btn').forEach((node) => {
+        node.classList.add('is-loading');
+      });
+      setFactSheetStatus('Opening PDF in a new tab. Stay on this map while the fact sheet loads.');
+
+      const opened = window.open(href, '_blank', 'noopener');
+      if (!opened) {
+        setFactSheetStatus('Please allow pop-ups for the fact sheet download, then try again.', { persist: false });
+      }
+
+      window.setTimeout(() => {
+        document.querySelectorAll('.finding-fact-sheet-btn').forEach((node) => {
+          node.classList.remove('is-loading');
+        });
+        setFactSheetStatus('If the PDF is taking a moment, keep this map open while it finishes loading.', { persist: false });
+      }, 2200);
+    });
+  });
 }
 
 function updateMapFindings(overallTotal, total2025, total2050, pctRisk2025, pctRisk2050) {
@@ -976,6 +1079,7 @@ document.getElementById('finding-close')?.addEventListener('click', () => {
 // Initialize all map layers and event listeners
 // ========================================
 map.on('load', () => {
+  attachFactSheetButtonHandlers();
   
   // ---- Add municipality boundary layer ----
   map.addSource('boundary', {
