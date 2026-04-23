@@ -6,11 +6,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="preconnect" href="https://rebuildbydesign.github.io" crossorigin />
   <link rel="dns-prefetch" href="//rebuildbydesign.github.io" />
-  <link href="styles.css" rel="stylesheet" />
+  <!-- Load Mapbox CSS first so our styles.css overrides (dark popups, dropdown, etc.) take precedence -->
   <script src='https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js'></script>
   <link href='https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css' rel='stylesheet' />
   <script src='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.0.0/mapbox-gl-geocoder.min.js'></script>
   <link rel='stylesheet' href='geocoder.css' />
+  <link href="styles.css" rel="stylesheet" />
 </head>
 <body>
   
@@ -23,33 +24,34 @@
     <a href="https://rebuildbydesign.github.io/nj-flood-risk/" class="back-to-county">← County View</a>
 
     <!-- Header & Introduction -->
-    <p class="purpose-strong">NJ Underwater: Public Infrastructure at Risk (Cities)</p>
+    <p class="purpose-strong">NJ Underwater: Public Infrastructure at Risk</p>
     <p class="helper-text">
-      Mapping public assets exposed to flooding across 8 NJ cities.
+      Mapping public assets exposed to flooding across every New Jersey municipality.
     </p>
     <!-- Step 1: City Selection -->
     <h3>Step 1: Select a City</h3>
     <p class="helper-text">
-      Don't see yours? <a href="mailto:jhuynh@rebuildbydesign.org?subject=City%20Request%20-%20NJ%20Flood%20Risk%20Explorer" class="request-city-link"><em>Request a city</em></a>.
+      Type to search any New Jersey municipality.
     </p>
-    <select id="municipality-select">
-      <option value="" disabled hidden>— Select a city —</option>
-      <option value="NEWARK CITY">Newark</option>
-      <option value="ELIZABETH CITY">Elizabeth</option>
-      <option value="CAMDEN CITY">Camden</option>
-      <option value="TRENTON CITY">Trenton</option>
-      <option value="JERSEY CITY">Jersey City</option>
-      <option value="PATERSON CITY">Paterson</option>
-      <option value="ASBURY PARK CITY">Asbury Park</option>
-      <option value="ATLANTIC CITY">Atlantic City</option>
-    </select>
-
-    <!-- Search for an Address (below city dropdown) -->
-    <p class="helper-text" style="margin-top:4px">
-      Or search an address to auto-select a city.
-    </p>
-    <div id="geocoder-container"></div>
-
+    <div class="muni-search" data-role="muni-search">
+      <input
+        id="municipality-select"
+        class="muni-search-input"
+        type="text"
+        autocomplete="off"
+        placeholder="Try 'Newark', 'Hoboken', 'Atlantic City'…"
+        aria-label="Search for a municipality"
+        aria-autocomplete="list"
+        aria-controls="muni-search-list"
+      />
+      <ul
+        id="muni-search-list"
+        class="muni-search-list"
+        role="listbox"
+        aria-label="Municipality suggestions"
+        hidden
+      ></ul>
+    </div>
 
     <!-- Step 2: Toggle Floodplains & Buyouts -->
     <h3>Step 2: Toggle Floodplains &amp; Buyouts</h3>
@@ -201,23 +203,31 @@
       <!-- Project title + description -->
       <div class="mobile-sheet-header">
         <p class="mobile-sheet-title">NJ PUBLIC INFRASTRUCTURE AT RISK</p>
-        <p class="mobile-sheet-desc">City-level flood exposure for public assets across 8 NJ cities.</p>
+        <p class="mobile-sheet-desc">Municipal-level flood exposure for public assets across New Jersey.</p>
       </div>
 
       <!-- City selector -->
       <div class="mobile-sheet-city-row">
-        <label class="mobile-city-label">Select a City</label>
-        <select id="mobile-municipality-select" class="mobile-city-select">
-          <option value="" disabled hidden>— Select a city —</option>
-          <option value="NEWARK CITY">Newark</option>
-          <option value="ELIZABETH CITY">Elizabeth</option>
-          <option value="CAMDEN CITY">Camden</option>
-          <option value="TRENTON CITY">Trenton</option>
-          <option value="JERSEY CITY">Jersey City</option>
-          <option value="PATERSON CITY">Paterson</option>
-          <option value="ASBURY PARK CITY">Asbury Park</option>
-          <option value="ATLANTIC CITY">Atlantic City</option>
-        </select>
+        <label class="mobile-city-label">Search a City</label>
+        <div class="muni-search muni-search--mobile" data-role="muni-search">
+          <input
+            id="mobile-municipality-select"
+            class="mobile-city-select muni-search-input"
+            type="text"
+            autocomplete="off"
+            placeholder="Try 'Newark', 'Hoboken', 'Atlantic City'…"
+            aria-label="Search for a municipality"
+            aria-autocomplete="list"
+            aria-controls="mobile-muni-search-list"
+          />
+          <ul
+            id="mobile-muni-search-list"
+            class="muni-search-list"
+            role="listbox"
+            aria-label="Municipality suggestions"
+            hidden
+          ></ul>
+        </div>
       </div>
 
       <!-- Tabs -->
@@ -284,6 +294,7 @@
     </div><!-- end .mobile-sheet-body -->
   </div>
 
+  <script src="data/municipalities.js"></script>
   <script src="scripts.js"></script>
   
 

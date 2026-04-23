@@ -301,7 +301,106 @@ label {
   color: #fff;
   border: 2px solid #4a4a4a;
   font-size: 0.875em;
+  cursor: text;
+}
+
+/* ========================================
+   CUSTOM MUNICIPALITY TYPEAHEAD
+   Dark-themed dropdown that replaces native <datalist> so we can actually
+   style the suggestions to match the project's aesthetic.
+   ======================================== */
+.muni-search {
+  position: relative;
+  width: 100%;
+  margin-bottom: 4px;
+}
+
+.muni-search-input {
+  width: 100%;
+  padding: 10px 12px;
+  background-color: #363636;
+  color: #fff;
+  border: 2px solid #4a4a4a;
+  border-radius: 0;
+  font-size: 0.875em;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.muni-search-input::placeholder {
+  color: #9a9a9a;
+  font-style: italic;
+  opacity: 1;
+}
+
+.muni-search-input:focus {
+  outline: none;
+  border-color: #f7c320;
+  background-color: #2d2d2d;
+}
+
+.muni-search-list {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  max-height: 260px;
+  overflow-y: auto;
+  background: rgba(15, 15, 15, 0.98);
+  border: 1px solid #4a4a4a;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.55);
+  z-index: 999;
+  scrollbar-width: thin;
+  scrollbar-color: #555 #1a1a1a;
+}
+
+.muni-search-list::-webkit-scrollbar { width: 6px; }
+.muni-search-list::-webkit-scrollbar-track { background: #1a1a1a; }
+.muni-search-list::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
+.muni-search-list::-webkit-scrollbar-thumb:hover { background: #777; }
+
+.muni-search-list[hidden] { display: none; }
+
+.muni-search-option {
+  display: block;
+  padding: 8px 12px;
+  color: #e6e6e6;
+  font-size: 0.875em;
   cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: background-color 0.1s ease, border-color 0.1s ease, color 0.1s ease;
+}
+
+.muni-search-option:hover,
+.muni-search-option.is-active {
+  background-color: #2a2a2a;
+  border-left-color: #f7c320;
+  color: #fff;
+}
+
+/* Bold the matching prefix/substring */
+.muni-search-option mark {
+  background: transparent;
+  color: #f7c320;
+  font-weight: 700;
+}
+
+.muni-search-empty {
+  padding: 10px 12px;
+  color: #9a9a9a;
+  font-size: 0.82em;
+  font-style: italic;
+}
+
+/* Mobile variant — the bottom sheet already has its own dark background so
+   the dropdown just needs slightly tighter spacing and max-height. */
+.muni-search--mobile .muni-search-list {
+  max-height: 220px;
 }
 
 /* ========================================
@@ -494,6 +593,78 @@ label {
   transform: translateY(-50%);
   border: 6px solid transparent;
   border-right-color: rgba(15, 15, 15, 0.95);
+}
+
+/* ----- Dark-theme popup (covers hover + selected + geocoder) ----- */
+.mapboxgl-popup-content,
+.mapboxgl-popup .mapboxgl-popup-content {
+  padding: 12px 14px !important;
+  border-radius: 8px !important;
+  background: rgba(15, 15, 15, 0.96) !important;
+  color: #f3f4f6 !important;
+  border: 1px solid #5a5a5a !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.55) !important;
+  font-size: 13px !important;
+  line-height: 1.45 !important;
+}
+
+.mapboxgl-popup-content strong {
+  color: #f7c320; /* project accent — highlight asset name */
+}
+
+.mapboxgl-popup-content a {
+  color: #ade4fa;
+}
+
+/* The little tip triangle is rendered via border-colors on different sides
+   depending on anchor direction; override each one so the tip matches the popup. */
+.mapboxgl-popup-anchor-top .mapboxgl-popup-tip,
+.mapboxgl-popup-anchor-top-left .mapboxgl-popup-tip,
+.mapboxgl-popup-anchor-top-right .mapboxgl-popup-tip {
+  border-bottom-color: rgba(15, 15, 15, 0.96) !important;
+}
+.mapboxgl-popup-anchor-bottom .mapboxgl-popup-tip,
+.mapboxgl-popup-anchor-bottom-left .mapboxgl-popup-tip,
+.mapboxgl-popup-anchor-bottom-right .mapboxgl-popup-tip {
+  border-top-color: rgba(15, 15, 15, 0.96) !important;
+}
+.mapboxgl-popup-anchor-left .mapboxgl-popup-tip {
+  border-right-color: rgba(15, 15, 15, 0.96) !important;
+}
+.mapboxgl-popup-anchor-right .mapboxgl-popup-tip {
+  border-left-color: rgba(15, 15, 15, 0.96) !important;
+}
+
+/* Default close button (visible on selected asset + geocoder popups) */
+.mapboxgl-popup-close-button {
+  color: #f3f4f6 !important;
+  font-size: 18px !important;
+  padding: 2px 8px !important;
+  right: 4px !important;
+  top: 2px !important;
+  background: transparent !important;
+}
+.mapboxgl-popup-close-button:hover {
+  color: #f7c320 !important;
+  background: transparent !important;
+}
+
+.asset-selected-popup .mapboxgl-popup-content {
+  padding: 12px 36px 12px 14px !important;
+}
+
+.asset-hover-popup .mapboxgl-popup-content strong,
+.asset-selected-popup .mapboxgl-popup-content strong {
+  color: #f3f4f6 !important;
+}
+
+.asset-selected-popup .mapboxgl-popup-close-button {
+  top: 6px !important;
+  right: 8px !important;
+  width: 28px !important;
+  height: 28px !important;
+  font-size: 20px !important;
+  line-height: 24px !important;
 }
 
 /* ========================================
@@ -981,6 +1152,21 @@ label {
     font-size: 11px;
     width: 180px;
     padding: 8px 10px;
+  }
+
+  .mapboxgl-popup-content {
+    max-width: 220px;
+    font-size: 12px;
+    padding: 10px 12px;
+  }
+
+  .asset-selected-popup .mapboxgl-popup-content {
+    padding: 10px 34px 10px 12px;
+  }
+
+  .asset-selected-popup .mapboxgl-popup-close-button {
+    top: 4px;
+    right: 6px;
   }
 
   /* Methodology popup */

@@ -28,19 +28,25 @@ let show2050 = false;
 
 // --- Deep-link: read ?city= URL parameter from county map ---
 const _urlCityParam = new URLSearchParams(window.location.search).get('city');
-const _validCities = ["NEWARK CITY","ELIZABETH CITY","CAMDEN CITY","TRENTON CITY",
-                      "JERSEY CITY","PATERSON CITY","ASBURY PARK CITY","ATLANTIC CITY"];
+// _validCities now holds every NJ municipality from boundary.json.
+// ALL_MUNICIPALITIES is defined in data/municipalities.js (loaded before this file).
+const _validCities = (typeof ALL_MUNICIPALITIES !== 'undefined' && Array.isArray(ALL_MUNICIPALITIES))
+    ? ALL_MUNICIPALITIES.slice()
+    : ["NEWARK CITY","ELIZABETH CITY","CAMDEN CITY","TRENTON CITY",
+       "JERSEY CITY","PATERSON CITY","ASBURY PARK CITY","ATLANTIC CITY"];
+// The 8 cities that have full per-city findings data (CSV + fact sheets)
+const _analyzedCities = ["NEWARK CITY","ELIZABETH CITY","CAMDEN CITY","TRENTON CITY",
+                         "JERSEY CITY","PATERSON CITY","ASBURY PARK CITY","ATLANTIC CITY"];
 let activeCity = (_urlCityParam && _validCities.includes(_urlCityParam))
     ? _urlCityParam
     : "NEWARK CITY";
 
-// Sync both dropdowns immediately (script runs after DOM, so elements are available)
-const _selectEl = document.getElementById('municipality-select');
-if (_selectEl) _selectEl.value = activeCity;
-const _mobileSelectEl = document.getElementById('mobile-municipality-select');
-if (_mobileSelectEl) _mobileSelectEl.value = activeCity;
+// Initial input value sync happens later, after formatMunLabel() is defined
+// (see populateMunicipalityDatalist call below). This keeps the input showing
+// the friendly display label (e.g. "Newark") instead of the raw MUN key.
 
-let popup = null;
+let hoverPopup = null;
+let selectedAssetPopup = null;
 
 // Boundary bounds cache - stores precomputed map bounds for each municipality
 const boundaryBoundsByMun = {};
@@ -67,6 +73,50 @@ const blueAcresCounts = {
   "Paterson City": 24
 };
 const blueAcresTotalCount = 1677;
+
+function removeHoverPopup() {
+  if (hoverPopup) {
+    hoverPopup.remove();
+    hoverPopup = null;
+  }
+}
+
+function closeSelectedAssetPopup() {
+  if (selectedAssetPopup) {
+    selectedAssetPopup.remove();
+    selectedAssetPopup = null;
+  }
+}
+
+function buildAssetPopupHtml(feature) {
+  const name = feature?.properties?.NAME
+    ? feature.properties.NAME.toUpperCase()
+    : 'PUBLIC ASSET';
+
+  return `<strong>${name}</strong>`;
+}
+
+function openSelectedAssetPopup(feature) {
+  const coordinates = feature?.geometry?.coordinates;
+  if (!coordinates) return;
+
+  removeHoverPopup();
+  closeSelectedAssetPopup();
+
+  selectedAssetPopup = new mapboxgl.Popup({
+    className: 'asset-selected-popup',
+    closeButton: true,
+    closeOnClick: false,
+    offset: 12
+  })
+    .setLngLat(coordinates)
+    .setHTML(buildAssetPopupHtml(feature))
+    .addTo(map);
+
+  selectedAssetPopup.on('close', () => {
+    selectedAssetPopup = null;
+  });
+}
 
 // ========================================
 // ASSET COLORS - Map data types to colors
@@ -129,6 +179,8 @@ const assetEmojis = {
 
 // ========================================
 // MUNICIPALITY DISPLAY NAMES - Clean labels for legend
+// Custom labels live here for the 8 cities with full analysis; every other
+// MUN is formatted on the fly by formatMunLabel() below.
 // ========================================
 const municipalityLabels = {
   "NEWARK CITY": "Newark",
@@ -140,6 +192,40 @@ const municipalityLabels = {
   "ASBURY PARK CITY": "Asbury Park",
   "ATLANTIC CITY": "Atlantic City"
 };
+
+// Convert a MUN key like "HOBOKEN CITY" / "ABERDEEN TWP" / "RIDGEWOOD VILLAGE"
+// into a cleaner display label like "Hoboken", "Aberdeen Twp", "Ridgewood".
+// Falls back to title-case if no specific rule applies.
+function formatMunLabel(mun) {
+  if (!mun) return '';
+  if (municipalityLabels[mun]) return municipalityLabels[mun];
+
+  // Suffix handling: strip pure "CITY" and "VILLAGE" (they're implied by context),
+  // but keep "TWP"/"TOWN"/"BORO" since many towns share names with nearby cities
+  // (e.g. "CLINTON TOWN" vs "CLINTON TWP") and we don't want to conflate them.
+  let label = mun;
+  const stripSuffixes = [' CITY', ' VILLAGE'];
+  for (const suffix of stripSuffixes) {
+    if (label.endsWith(suffix)) {
+      label = label.slice(0, -suffix.length);
+      break;
+    }
+  }
+  // Title-case each word; keep common muni suffixes in their abbreviated form.
+  return label
+    .toLowerCase()
+    .split(' ')
+    .map(word => {
+      if (word === 'twp') return 'Twp';
+      if (word === 'boro') return 'Boro';
+      if (word === 'town') return 'Town';
+      if (word.includes('-')) {
+        return word.split('-').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join('-');
+      }
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(' ');
+}
 
 const municipalityFactSheetUrls = {
   "NEWARK CITY": "https://rebuildbydesign.github.io/NJ-City-Fact-Sheet/?city=Newark",
@@ -154,11 +240,220 @@ const municipalityFactSheetUrls = {
 
 const factSheetStatusTimeouts = {};
 
+// Build reverse lookup for every NJ municipality so the typeahead input,
+// geocoder result matching, and ?city= deep-links all resolve to a MUN key.
+// Two entries per muni: the raw MUN ("NEWARK CITY") and the display label ("Newark").
 const normalizedCityKeyLookup = {};
-Object.entries(municipalityLabels).forEach(([cityKey, label]) => {
+_validCities.forEach((cityKey) => {
   normalizedCityKeyLookup[normalizeCityName(cityKey)] = cityKey;
-  normalizedCityKeyLookup[normalizeCityName(label)] = cityKey;
+  const label = formatMunLabel(cityKey);
+  if (label) normalizedCityKeyLookup[normalizeCityName(label)] = cityKey;
 });
+
+// Resolve whatever a user typed or selected from the datalist (display label,
+// full MUN key, or a partial variant) back to a canonical MUN key.
+function resolveMunFromInputValue(value) {
+  const trimmed = (value || '').trim();
+  if (!trimmed) return null;
+  if (_validCities.includes(trimmed)) return trimmed;
+  const upper = trimmed.toUpperCase();
+  if (_validCities.includes(upper)) return upper;
+  const normalized = normalizeCityName(trimmed);
+  if (normalizedCityKeyLookup[normalized]) return normalizedCityKeyLookup[normalized];
+  // Fallback: try first-segment match (e.g. "Newark, New Jersey" → "Newark")
+  const firstSegment = normalizeCityName(trimmed.split(',')[0]);
+  if (firstSegment && normalizedCityKeyLookup[firstSegment]) {
+    return normalizedCityKeyLookup[firstSegment];
+  }
+  return null;
+}
+
+// ========================================
+// CUSTOM MUNICIPALITY TYPEAHEAD
+// Replaces native <datalist> (which browsers render as un-styleable light
+// popups). Each input is paired with a <ul> dropdown built by index.html;
+// this wires them together with filter/keyboard/select behavior and keeps
+// the two instances (desktop + mobile) in sync via setActiveCitySelection.
+// ========================================
+
+// Pre-sorted list of { mun, label } used for filtering. Built once.
+const _muniSearchEntries = _validCities
+  .map((mun) => ({ mun, label: formatMunLabel(mun) || mun }))
+  .filter((e) => e.label)
+  .sort((a, b) => a.label.localeCompare(b.label));
+
+// Disambiguate rare duplicate labels (append the MUN key in parens).
+(() => {
+  const seen = new Set();
+  _muniSearchEntries.forEach((e) => {
+    if (seen.has(e.label)) e.label = `${e.label} (${e.mun})`;
+    seen.add(e.label);
+  });
+})();
+
+// Escape HTML so a muni name containing < or & can't break the markup.
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// Highlight the part of `label` that matches `query` with a <mark>. Case-insensitive.
+function highlightMatch(label, query) {
+  const safe = escapeHtml(label);
+  if (!query) return safe;
+  const q = query.trim();
+  if (!q) return safe;
+  const lowerLabel = label.toLowerCase();
+  const lowerQ = q.toLowerCase();
+  const hitStart = lowerLabel.indexOf(lowerQ);
+  if (hitStart < 0) return safe;
+  const before = escapeHtml(label.slice(0, hitStart));
+  const hit = escapeHtml(label.slice(hitStart, hitStart + q.length));
+  const after = escapeHtml(label.slice(hitStart + q.length));
+  return `${before}<mark>${hit}</mark>${after}`;
+}
+
+// Return up to `limit` entries that match a free-text query. Prefix matches
+// rank above substring matches so typing "new" surfaces Newark first, then
+// East Newark Boro, then New Brunswick, etc.
+function filterMuniEntries(query, limit = 50) {
+  const q = (query || '').trim().toLowerCase();
+  if (!q) return _muniSearchEntries.slice(0, limit);
+
+  const prefix = [];
+  const contains = [];
+  for (const e of _muniSearchEntries) {
+    const l = e.label.toLowerCase();
+    if (l.startsWith(q)) prefix.push(e);
+    else if (l.includes(q)) contains.push(e);
+    if (prefix.length + contains.length >= limit * 2) break;
+  }
+  return [...prefix, ...contains].slice(0, limit);
+}
+
+function initMuniSearch(inputEl, listEl) {
+  if (!inputEl || !listEl) return;
+
+  let activeIndex = -1;
+  let currentMatches = [];
+
+  function render(query) {
+    currentMatches = filterMuniEntries(query);
+    activeIndex = currentMatches.length ? 0 : -1;
+    if (!currentMatches.length) {
+      listEl.innerHTML = '<li class="muni-search-empty">No municipality matches</li>';
+    } else {
+      listEl.innerHTML = currentMatches
+        .map((e, i) => {
+          const active = i === activeIndex ? ' is-active' : '';
+          return `<li class="muni-search-option${active}" role="option" data-mun="${escapeHtml(e.mun)}" data-index="${i}">${highlightMatch(e.label, query)}</li>`;
+        })
+        .join('');
+    }
+    listEl.hidden = false;
+  }
+
+  function hide() {
+    listEl.hidden = true;
+    activeIndex = -1;
+  }
+
+  function commit(entryOrValue) {
+    let mun = null;
+    if (entryOrValue && typeof entryOrValue === 'object' && entryOrValue.mun) {
+      mun = entryOrValue.mun;
+    } else {
+      mun = resolveMunFromInputValue(entryOrValue);
+    }
+    if (mun) {
+      setActiveCitySelection(mun);
+    } else {
+      // Typed text we can't match — revert to the currently active city's label
+      inputEl.value = activeCity ? formatMunLabel(activeCity) : '';
+    }
+    hide();
+  }
+
+  function setActive(newIndex) {
+    const options = listEl.querySelectorAll('.muni-search-option');
+    if (!options.length) return;
+    if (newIndex < 0) newIndex = options.length - 1;
+    if (newIndex >= options.length) newIndex = 0;
+    options.forEach((el, i) => el.classList.toggle('is-active', i === newIndex));
+    activeIndex = newIndex;
+    const active = options[newIndex];
+    if (active && active.scrollIntoView) {
+      active.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  inputEl.addEventListener('focus', () => render(inputEl.value));
+  inputEl.addEventListener('input', () => render(inputEl.value));
+
+  inputEl.addEventListener('keydown', (e) => {
+    if (listEl.hidden && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      render(inputEl.value);
+      e.preventDefault();
+      return;
+    }
+    if (e.key === 'ArrowDown') { setActive(activeIndex + 1); e.preventDefault(); }
+    else if (e.key === 'ArrowUp') { setActive(activeIndex - 1); e.preventDefault(); }
+    else if (e.key === 'Enter') {
+      if (activeIndex >= 0 && currentMatches[activeIndex]) {
+        commit(currentMatches[activeIndex]);
+      } else {
+        commit(inputEl.value);
+      }
+      e.preventDefault();
+    } else if (e.key === 'Escape') {
+      hide();
+      inputEl.blur();
+    }
+  });
+
+  // Mousedown (not click) so the input's blur doesn't fire first and hide the list.
+  listEl.addEventListener('mousedown', (e) => {
+    const li = e.target.closest('.muni-search-option');
+    if (!li) return;
+    e.preventDefault();
+    const mun = li.dataset.mun;
+    if (mun) commit({ mun });
+  });
+
+  inputEl.addEventListener('blur', () => {
+    // Delay so a click on the list can still register.
+    setTimeout(() => { hide(); }, 150);
+  });
+
+  // Native change event (e.g. programmatic change). Keep for safety.
+  inputEl.addEventListener('change', () => {
+    const resolved = resolveMunFromInputValue(inputEl.value);
+    if (resolved && resolved !== activeCity) setActiveCitySelection(resolved);
+  });
+}
+
+function setupMuniSearch() {
+  initMuniSearch(
+    document.getElementById('municipality-select'),
+    document.getElementById('muni-search-list')
+  );
+  initMuniSearch(
+    document.getElementById('mobile-municipality-select'),
+    document.getElementById('mobile-muni-search-list')
+  );
+
+  // Seed both inputs with the active city's friendly label on startup.
+  const desktopSelect = document.getElementById('municipality-select');
+  const mobileSelect = document.getElementById('mobile-municipality-select');
+  const currentLabel = activeCity ? formatMunLabel(activeCity) : '';
+  if (desktopSelect) desktopSelect.value = currentLabel;
+  if (mobileSelect) mobileSelect.value = currentLabel;
+}
+
+setupMuniSearch();
 
 // ========================================
 // CSV ASSET NAME → APP KEY MAPPING
@@ -173,7 +468,8 @@ const csvAssetKeyMap = {
   "POLICE STATION": "POLICE",
   "POWERPLANT": "POWERPLANT",
   "SCHOOL": "SCHOOL",
-  "SOLID & HAZARD": "SOLIDHAZARD",
+  "SOLID & HAZARD": "SOLIDHAZARD",                 // legacy 8-city CSV label
+  "SOLID & HAZARDOUS WASTE SITE": "SOLIDHAZARD",   // statewide gis-export label
   "SOLID WASTE LANDFILL": "SOLIDWASTE",
   "SUPERFUND": "SUPERFUND",
   "WASTEWATER TREATMENT": "WASTEWATER"
@@ -217,17 +513,8 @@ Object.entries(assetNormalize).forEach(([alias, normalized]) => {
   colorMatchPairs.push(alias, colors[normalized]);
 });
 
-// CSV municipality name → app activeCity key
-const csvMunKeyMap = {
-  "Newark": "NEWARK CITY",
-  "Elizabeth": "ELIZABETH CITY",
-  "Camden": "CAMDEN CITY",
-  "Trenton": "TRENTON CITY",
-  "Jersey City": "JERSEY CITY",
-  "Paterson": "PATERSON CITY",
-  "Asbury Park City": "ASBURY PARK CITY",
-  "Atlantic City": "ATLANTIC CITY"
-};
+// (Legacy csvMunKeyMap removed — no longer needed now that the statewide
+// gis-export-key-findings.csv already uses MUN keys matching boundary.json.)
 
 // ========================================
 // MUNICIPALITY TOTALS - loaded from CSV
@@ -238,87 +525,112 @@ const municipalityTotals = {};
 // Overall summary from CSV: { "NEWARK CITY": { total, risk2025, risk2050, pct2025, pct2050, finding }, ... }
 const municipalityOverall = {};
 
+// Quote- and multiline-aware CSV parser. Needed because gis-export-key-findings.csv
+// has fields like "Luminace Solar New Jersey, LLC" and a few rows that contain
+// embedded newlines inside quoted names.
+function parseCsvText(text) {
+  const rows = [];
+  let cur = [''];
+  let field = 0;
+  let inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"') {
+      if (inQ && text[i + 1] === '"') { cur[field] += '"'; i++; }
+      else { inQ = !inQ; }
+    } else if (c === ',' && !inQ) {
+      cur.push('');
+      field++;
+    } else if ((c === '\n' || c === '\r') && !inQ) {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      if (cur.length > 1 || cur[0]) rows.push(cur);
+      cur = [''];
+      field = 0;
+    } else {
+      cur[field] += c;
+    }
+  }
+  if (cur.length > 1 || cur[0]) rows.push(cur);
+  return rows;
+}
+
+// Loads the statewide GIS export (one row per public asset). Aggregates counts
+// per municipality + computes overall 2025 / 2050 floodplain exposure and a
+// display-ready "finding" sentence used by the key-finding card.
 function loadMunicipalityTotals() {
-  return fetch('data/8_municipality_findings.csv')
+  return fetch('data/gis-export-key-findings.csv')
     .then(res => res.text())
     .then(text => {
-      const lines = text.split('\n');
-      let currentMun = null;
+      const rows = parseCsvText(text);
+      if (!rows.length) return;
 
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
+      const header = rows[0];
+      const idx = {
+        asset: header.indexOf('PUBLIC_ASSET'),
+        id: header.indexOf('UNIQUE_ID'),
+        name: header.indexOf('NAME'),
+        county: header.indexOf('COUNTY'),
+        // Note: the CSV header is spelled "MUNCIPALITY" (missing the I) — keep as-is.
+        mun: header.indexOf('MUNCIPALITY'),
+        flood2025: header.indexOf('2025_FLOOD'),
+        flood2050: header.indexOf('2050 FLOOD')
+      };
 
-        const cols = [];
-        let current = '';
-        let inQuotes = false;
-        for (let c = 0; c < line.length; c++) {
-          if (line[c] === '"') { inQuotes = !inQuotes; }
-          else if (line[c] === ',' && !inQuotes) { cols.push(current.trim()); current = ''; }
-          else { current += line[c]; }
-        }
-        cols.push(current.trim());
-
-        // Check if this line is a municipality header (single value in first col, rest empty)
-        if (cols[0] && !cols[1] && !cols[2] && !cols[3] && !cols[4] && !cols[5]) {
-          const munName = cols[0];
-          if (munName !== 'Overall' && csvMunKeyMap[munName]) {
-            currentMun = csvMunKeyMap[munName];
-            municipalityTotals[currentMun] = {};
-          }
-          continue;
-        }
-
-        // Skip header rows
-        if (cols[0] === 'Public Asset' || !currentMun) continue;
-
-        // Capture the "Overall" summary row for this municipality
-        if (cols[0] === 'Overall' || (cols[0] === '' && cols[1] && parseInt(cols[1]) > 0)) {
-          const totalCount = parseInt(cols[1]) || 0;
-          const risk2025 = parseInt(cols[2]) || 0;
-          let pct2025 = cols[3] || '0%';
-          const risk2050 = parseInt(cols[4]) || 0;
-          let pct2050 = cols[5] || '0%';
-          const finding = cols[6] || '';
-
-          // Normalize percentages: convert raw decimals (e.g. "0.392") to "39.2%"
-          if (pct2025 && !pct2025.includes('%')) {
-            const val = parseFloat(pct2025);
-            if (!isNaN(val) && val >= 0 && val <= 1) {
-              pct2025 = (val * 100).toFixed(1) + '%';
-            }
-          }
-          if (pct2050 && !pct2050.includes('%')) {
-            const val = parseFloat(pct2050);
-            if (!isNaN(val) && val >= 0 && val <= 1) {
-              pct2050 = (val * 100).toFixed(1) + '%';
-            }
-          }
-
-          municipalityOverall[currentMun] = {
-            total: totalCount,
-            risk2025: risk2025,
-            risk2050: risk2050,
-            pct2025: pct2025,
-            pct2050: pct2050,
-            finding: finding
-          };
-          continue;
-        }
-
-        // Parse asset row: Asset Name, Total Count, 2025 Risk, % 2025, 2050 Risk, % 2050, Findings
-        const csvAssetName = cols[0];
-        const totalCount = parseInt(cols[1]) || 0;
-        const appKey = csvAssetKeyMap[csvAssetName];
-
-        if (appKey && totalCount > 0) {
-          municipalityTotals[currentMun][appKey] = totalCount;
-        }
+      if (idx.mun < 0 || idx.asset < 0 || idx.flood2025 < 0 || idx.flood2050 < 0) {
+        console.warn('gis-export-key-findings.csv header unexpected:', header);
+        return;
       }
-      console.log('Municipality totals loaded:', municipalityTotals);
-      console.log('Municipality overall loaded:', municipalityOverall);
+
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || row.length !== header.length) continue;
+
+        let mun = (row[idx.mun] || '').trim();
+        if (!mun) continue;
+        // The assets GeoJSON uses "SOUTH ORANGE VILLAGE TWP" — the CSV omits TWP.
+        // Keep the two in sync so filters and lookups match.
+        if (mun === 'SOUTH ORANGE VILLAGE') mun = 'SOUTH ORANGE VILLAGE TWP';
+
+        const csvAsset = (row[idx.asset] || '').trim();
+        const appKey = csvAssetKeyMap[csvAsset];
+        if (!appKey) continue;
+
+        if (!municipalityTotals[mun]) municipalityTotals[mun] = {};
+        municipalityTotals[mun][appKey] = (municipalityTotals[mun][appKey] || 0) + 1;
+
+        if (!municipalityOverall[mun]) {
+          municipalityOverall[mun] = {
+            total: 0, risk2025: 0, risk2050: 0,
+            pct2025: '0%', pct2050: '0%', finding: ''
+          };
+        }
+        municipalityOverall[mun].total += 1;
+        if ((row[idx.flood2025] || '').trim() === '1') municipalityOverall[mun].risk2025 += 1;
+        if ((row[idx.flood2050] || '').trim() === '1') municipalityOverall[mun].risk2050 += 1;
+      }
+
+      // Compute percentages + generate the findings sentence (same template the map
+      // and mobile sheet expect). Uses formatMunLabel for a friendly display name.
+      Object.keys(municipalityOverall).forEach((mun) => {
+        const m = municipalityOverall[mun];
+        const p25 = m.total > 0 ? ((m.risk2025 / m.total) * 100).toFixed(1) + '%' : '0%';
+        const p50 = m.total > 0 ? ((m.risk2050 / m.total) * 100).toFixed(1) + '%' : '0%';
+        m.pct2025 = p25;
+        m.pct2050 = p50;
+
+        const display = formatMunLabel(mun) || mun;
+        if (m.total === 0) {
+          m.finding = `No public assets are mapped for ${display}.`;
+        } else if (m.risk2050 === 0) {
+          m.finding = `None of the <strong>${m.total}</strong> public assets in ${display} fall inside the 2025 or 2050 floodplain.`;
+        } else {
+          m.finding = `Of <strong>${m.total}</strong> public assets in ${display}, <strong>${m.risk2025}</strong> are in the floodplain today &mdash; <span class="finding-2050">rising to ${m.risk2050} by 2050</span> (${p50} of all assets).`;
+        }
+      });
+
+      console.log('Loaded totals for', Object.keys(municipalityOverall).length, 'municipalities');
     })
-    .catch(err => console.warn('Could not load municipality totals CSV:', err));
+    .catch(err => console.warn('Could not load gis-export-key-findings.csv:', err));
 }
 
 // ========================================
@@ -326,7 +638,7 @@ function loadMunicipalityTotals() {
 // Toggle between 2025 and 2050 scenarios
 // ========================================
 function loadLayers() {
-  // Guard: if no city is active (e.g. user searched outside the 8 cities), hide everything
+  // Guard: if no city is active (e.g. user searched an address outside NJ), hide everything
   if (!activeCity) {
     ['assets_2025', 'assets_2050', 'floodplain_2025', 'floodplain_2050', 'boundary'].forEach(id => {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
@@ -473,7 +785,7 @@ function updateLegend() {
       ...Object.keys(munTotals)
     ]);
 
-    const cityDisplayName = municipalityLabels[activeCity] || activeCity;
+    const cityDisplayName = formatMunLabel(activeCity) || activeCity;
 
     // Use CSV overall totals if available, else compute from asset type totals
     const csvOverall = municipalityOverall[activeCity];
@@ -826,14 +1138,20 @@ function findAnalyzedCityFromText(value) {
 }
 
 function setActiveCitySelection(cityKey) {
-  if (!cityKey || !_validCities.includes(cityKey)) return;
+  // Accept either a MUN key ("NEWARK CITY") or a display label ("Newark") — the
+  // datalist sends the label, the geocoder sends the MUN key.
+  const resolved = _validCities.includes(cityKey) ? cityKey : resolveMunFromInputValue(cityKey);
+  if (!resolved) return;
 
-  activeCity = cityKey;
+  closeSelectedAssetPopup();
+  removeHoverPopup();
+  activeCity = resolved;
 
   const desktopSelect = document.getElementById('municipality-select');
   const mobileSelect = document.getElementById('mobile-municipality-select');
-  if (desktopSelect) desktopSelect.value = activeCity;
-  if (mobileSelect) mobileSelect.value = activeCity;
+  const label = formatMunLabel(activeCity);
+  if (desktopSelect) desktopSelect.value = label;
+  if (mobileSelect) mobileSelect.value = label;
 
   // FIXED: Clean up any lingering geocoder popup when switching cities
   // (e.g. user searched a non-analyzed address, then picks a city from dropdown)
@@ -861,9 +1179,12 @@ function setActiveCitySelection(cityKey) {
   if (typeof updateMobileBlueAcresStats === 'function') updateMobileBlueAcresStats();
 }
 
-// Deactivate city selection — used when a geocoder search lands outside the 8 analyzed cities.
+// Deactivate city selection — used when a geocoder search lands outside of New Jersey
+// (or any address that doesn't match a NJ municipality).
 // Clears the dropdown, hides all city-specific layers, and hides the finding card.
 function deactivateCity() {
+  closeSelectedAssetPopup();
+  removeHoverPopup();
   activeCity = null;
 
   // Reset both dropdowns to the blank placeholder
@@ -904,7 +1225,7 @@ function getLocalCityGeocoderResults(query) {
 
   return _validCities
     .map(cityKey => {
-      const label = municipalityLabels[cityKey];
+      const label = formatMunLabel(cityKey);
       const normalizedLabel = normalizeCityName(label);
       const bounds = boundaryBoundsByMun[cityKey];
       if (!label || !bounds) return null;
@@ -945,7 +1266,7 @@ function getLocalCityGeocoderResults(query) {
 function updateMunicipalityLabel() {
   const el = document.getElementById('finding-city-name');
   if (!el) return;
-  const cityDisplayName = municipalityLabels[activeCity] || activeCity;
+  const cityDisplayName = formatMunLabel(activeCity) || activeCity;
   el.textContent = cityDisplayName;
   updateFactSheetButtons();
 
@@ -955,7 +1276,7 @@ function updateMunicipalityLabel() {
 }
 
 function updateFactSheetButtons() {
-  const cityDisplayName = municipalityLabels[activeCity] || '';
+  const cityDisplayName = formatMunLabel(activeCity) || '';
   const href = municipalityFactSheetUrls[activeCity];
   const label = cityDisplayName
     ? `DOWNLOAD ${cityDisplayName.toUpperCase()} FACT SHEET`
@@ -1034,7 +1355,7 @@ function attachFactSheetButtonHandlers() {
         document.querySelectorAll('.finding-fact-sheet-btn').forEach((node) => {
           node.classList.remove('is-loading');
         });
-        setFactSheetStatus('If the PDF is taking a moment, keep this map open while it finishes loading.', { persist: false });
+        setFactSheetStatus('', { persist: false });
       }, 2200);
     });
   });
@@ -1044,7 +1365,7 @@ function updateMapFindings(overallTotal, total2025, total2050, pctRisk2025, pctR
   const el = document.getElementById('finding-text');
   if (!el) return;
 
-  // Use CSV findings if available for this city
+  // Use CSV findings if available for this city (only the 8 analyzed cities have them)
   const csvOverall = municipalityOverall[activeCity];
   if (csvOverall && csvOverall.finding) {
     el.innerHTML = csvOverall.finding;
@@ -1053,11 +1374,12 @@ function updateMapFindings(overallTotal, total2025, total2050, pctRisk2025, pctR
 
   // Fallback: generate sentence if CSV finding is missing
   if (overallTotal === 0) {
-    el.innerHTML = '';
+    const cityDisplayName = formatMunLabel(activeCity) || activeCity || 'this municipality';
+    el.innerHTML = `No public assets in the mapped dataset fall inside the 2050 floodplain for ${cityDisplayName}.`;
     return;
   }
 
-  const cityDisplayName = municipalityLabels[activeCity] || activeCity;
+  const cityDisplayName = formatMunLabel(activeCity) || activeCity;
 
   el.innerHTML = `
     Of <strong>${overallTotal}</strong> public assets in ${cityDisplayName},
@@ -1296,7 +1618,7 @@ map.on('load', () => {
   });
   map.on('mouseleave', 'blueacres-fill', () => {
     map.getCanvas().style.cursor = '';
-    if (popup) popup.remove();
+    removeHoverPopup();
   });
 
   map.on('mousemove', 'blueacres-fill', e => {
@@ -1308,8 +1630,8 @@ map.on('load', () => {
     const date = f.properties.PRESERVATI || '';
     const muni = f.properties.MUNICIPALI || '';
 
-    if (popup) popup.remove();
-    popup = new mapboxgl.Popup({ closeButton: false, offset: 10 })
+    removeHoverPopup();
+    hoverPopup = new mapboxgl.Popup({ closeButton: false, offset: 10 })
       .setLngLat(e.lngLat)
       .setHTML(`
         <strong style="color:#0d9488">\u{1F33F} ${name}</strong><br/>
@@ -1327,29 +1649,62 @@ map.on('load', () => {
     });
     
     map.getCanvas().style.cursor = features.length ? 'pointer' : '';
-    
-    if (popup) popup.remove();
-    
+
+    if (selectedAssetPopup) {
+      removeHoverPopup();
+      return;
+    }
+
+    removeHoverPopup();
+
     if (features.length) {
       const f = features[0];
-      const name = f.properties.NAME
-        ? f.properties.NAME.toUpperCase()
-        : '';
-      
-      // FIXED: Add parentheses for function call
-      popup = new mapboxgl.Popup({ closeButton: false })
+      hoverPopup = new mapboxgl.Popup({
+        className: 'asset-hover-popup',
+        closeButton: false
+      })
         .setLngLat(f.geometry.coordinates)
-        .setHTML(`<strong>${name}</strong>`)
+        .setHTML(buildAssetPopupHtml(f))
         .addTo(map);
     }
   });
+
+  ['assets_2025', 'assets_2050'].forEach((layerId) => {
+    map.on('mouseleave', layerId, () => {
+      if (!selectedAssetPopup) removeHoverPopup();
+    });
+
+    map.on('click', layerId, (e) => {
+      const feature = e.features?.[0];
+      if (!feature) return;
+      openSelectedAssetPopup(feature);
+    });
+  });
+
+  map.on('click', (e) => {
+    const features = map.queryRenderedFeatures(e.point, {
+      layers: ['assets_2025', 'assets_2050']
+    });
+
+    if (!features.length) {
+      closeSelectedAssetPopup();
+    }
+  });
   
-  map.on('mouseleave', 'assets_2025', () => popup && popup.remove());
-  map.on('mouseleave', 'assets_2050', () => popup && popup.remove());
-  
-  // ---- Municipality dropdown event ----
+  // ---- Municipality typeahead event ----
+  // The input is a <datalist>-backed text field; users can either pick a
+  // suggestion (value = display label) or type a custom value. setActiveCitySelection
+  // handles both MUN keys and display labels via resolveMunFromInputValue.
   document.getElementById('municipality-select').addEventListener('change', e => {
-    setActiveCitySelection(e.target.value);
+    const raw = e.target.value;
+    const resolved = resolveMunFromInputValue(raw);
+    if (resolved) {
+      setActiveCitySelection(resolved);
+    } else if (raw && raw.trim()) {
+      // Typed a muni we don't recognize — snap back to current activeCity's label
+      // so the input doesn't stay in a broken state.
+      e.target.value = activeCity ? formatMunLabel(activeCity) : '';
+    }
   });
   
   // ---- Year toggle button events (independent on/off) ----
@@ -1390,119 +1745,119 @@ map.on('load', () => {
   // FIXED: Declare geocoderContainer BEFORE geocoder so it's available in event handlers
   const geocoderContainer = document.getElementById('geocoder-container');
 
-  const geocoder = new MapboxGeocoder({
-    accessToken: mapboxgl.accessToken,
-    mapboxgl: mapboxgl,
-    localGeocoder: getLocalCityGeocoderResults,
-    marker: {
-      color: '#f7c320'
-    },
-    countries: 'us',
-    bbox: [-75.559614, 38.928519, -73.893979, 41.357423],
-    placeholder: 'Enter Address Here',
-    flyTo: false
-  });
+  if (geocoderContainer) {
+    const geocoder = new MapboxGeocoder({
+      accessToken: mapboxgl.accessToken,
+      mapboxgl: mapboxgl,
+      localGeocoder: getLocalCityGeocoderResults,
+      marker: {
+        color: '#f7c320'
+      },
+      countries: 'us',
+      bbox: [-75.559614, 38.928519, -73.893979, 41.357423],
+      placeholder: 'Enter Address Here',
+      flyTo: false
+    });
 
-  let geocoderPopup = null;
+    let geocoderPopup = null;
 
-  geocoder.on('result', (e) => {
-    console.log('[Geocoder] result event fired', e.result);
-    const coords = e.result.center;
-    const findingCard = document.getElementById('finding-card');
+    geocoder.on('result', (e) => {
+      console.log('[Geocoder] result event fired', e.result);
+      const coords = e.result.center;
+      const findingCard = document.getElementById('finding-card');
 
-    // Clean up any previous popup
-    if (geocoderPopup) { geocoderPopup.remove(); geocoderPopup = null; }
+      // Clean up any previous popup
+      if (geocoderPopup) { geocoderPopup.remove(); geocoderPopup = null; }
 
-    // ---- Determine matched city using 3 strategies ----
-    let matchedCity = null;
+      // ---- Determine matched city using 3 strategies ----
+      let matchedCity = null;
 
-    // Strategy 1: Direct city key from our local geocoder suggestions
-    const directCityKey = e.result?.properties?.analyzed_city_key;
-    if (directCityKey && _validCities.includes(directCityKey)) {
-      matchedCity = directCityKey;
-      console.log('[Geocoder] Matched via local city key:', matchedCity);
-    }
+      // Strategy 1: Direct city key from our local geocoder suggestions
+      const directCityKey = e.result?.properties?.analyzed_city_key;
+      if (directCityKey && _validCities.includes(directCityKey)) {
+        matchedCity = directCityKey;
+        console.log('[Geocoder] Matched via local city key:', matchedCity);
+      }
 
-    // Strategy 2: Point-in-polygon — do the coordinates land inside one of our 8 cities?
-    if (!matchedCity) {
-      matchedCity = findAnalyzedCityAtLngLat(coords);
-      if (matchedCity) console.log('[Geocoder] Matched via point-in-polygon:', matchedCity);
-    }
+      // Strategy 2: Point-in-polygon — do the coordinates land inside any NJ municipality?
+      if (!matchedCity) {
+        matchedCity = findAnalyzedCityAtLngLat(coords);
+        if (matchedCity) console.log('[Geocoder] Matched via point-in-polygon:', matchedCity);
+      }
 
-    // Strategy 3: Check geocoder result metadata — only the "place" context field
-    if (!matchedCity) {
-      matchedCity = findAnalyzedCityFromGeocoderResult(e.result);
-      if (matchedCity) console.log('[Geocoder] Matched via geocoder result metadata:', matchedCity);
-    }
+      // Strategy 3: Check geocoder result metadata — only the "place" context field
+      if (!matchedCity) {
+        matchedCity = findAnalyzedCityFromGeocoderResult(e.result);
+        if (matchedCity) console.log('[Geocoder] Matched via geocoder result metadata:', matchedCity);
+      }
 
-    console.log('[Geocoder] Final matchedCity:', matchedCity);
+      console.log('[Geocoder] Final matchedCity:', matchedCity);
 
-    // ---- Act on the result ----
-    if (matchedCity) {
-      // Hide the geocoder marker (we're zooming to the full city instead)
-      const markerEl = geocoderContainer?.querySelector('.mapboxgl-marker');
-      if (markerEl) markerEl.style.display = 'none';
+      // ---- Act on the result ----
+      if (matchedCity) {
+        // Hide the geocoder marker (we're zooming to the full city instead)
+        const markerEl = geocoderContainer.querySelector('.mapboxgl-marker');
+        if (markerEl) markerEl.style.display = 'none';
 
-      setActiveCitySelection(matchedCity);
-      if (findingCard) findingCard.style.display = '';
-    } else {
-      // NOT one of our 8 cities — deactivate everything and show the popup
-      console.log('[Geocoder] No match — deactivating city, showing popup');
-      deactivateCity();
+        setActiveCitySelection(matchedCity);
+        if (findingCard) findingCard.style.display = '';
+      } else {
+        // No match — the address is likely outside New Jersey. Deactivate everything
+        // and show an explanatory popup at the searched location.
+        console.log('[Geocoder] No match — deactivating city, showing popup');
+        deactivateCity();
 
-      // Zoom to the searched location
-      map.flyTo({
-        center: coords,
-        zoom: 13,
-        padding: { top: 0, bottom: 0, left: 0, right: window.innerWidth > 1024 ? 410 : 0 },
-        speed: 1.2,
-        curve: 1
-      });
+        // Zoom to the searched location
+        map.flyTo({
+          center: coords,
+          zoom: 13,
+          padding: { top: 0, bottom: 0, left: 0, right: window.innerWidth > 1024 ? 410 : 0 },
+          speed: 1.2,
+          curve: 1
+        });
 
-      // Ensure the yellow marker is visible at the searched address
-      const markerEl = geocoderContainer?.querySelector('.mapboxgl-marker');
+        // Ensure the yellow marker is visible at the searched address
+        const markerEl = geocoderContainer.querySelector('.mapboxgl-marker');
+        if (markerEl) markerEl.style.display = '';
+
+        geocoderPopup = new mapboxgl.Popup({
+          closeButton: true,
+          maxWidth: '300px',
+          anchor: 'bottom',
+          offset: [0, -10]
+        })
+        .setLngLat(coords)
+        .setHTML(`
+          <div style="padding:6px 4px;font-size:13px;line-height:1.6">
+            <strong>Outside New Jersey</strong><br/>
+            This address doesn't fall within a New Jersey municipality.
+            Try searching an NJ address or pick a municipality from the list.
+          </div>
+        `)
+        .addTo(map);
+
+        geocoderPopup.on('close', () => {
+          geocoderPopup = null;
+        });
+      }
+    });
+
+    geocoder.on('clear', () => {
+      if (geocoderPopup) { geocoderPopup.remove(); geocoderPopup = null; }
+      // Restore marker visibility for next search
+      const markerEl = geocoderContainer.querySelector('.mapboxgl-marker');
       if (markerEl) markerEl.style.display = '';
 
-      geocoderPopup = new mapboxgl.Popup({
-        closeButton: true,
-        maxWidth: '300px',
-        anchor: 'bottom',
-        offset: [0, -10]
-      })
-      .setLngLat(coords)
-      .setHTML(`
-        <div style="padding:6px 4px;font-size:13px;line-height:1.6">
-          <strong>City data not available</strong><br/>
-          This location is not within one of the 8 cities currently mapped.
-          Please request your city by contacting
-          <a href="mailto:info@rebuildbydesign.org" style="color:#3a7fc3">info@rebuildbydesign.org</a>
-        </div>
-      `)
-      .addTo(map);
+      // If city was deactivated (non-analyzed search), restore default city
+      if (!activeCity) {
+        setActiveCitySelection('NEWARK CITY');
+      } else {
+        const findingCard = document.getElementById('finding-card');
+        if (findingCard) findingCard.style.display = '';
+      }
+    });
 
-      geocoderPopup.on('close', () => {
-        geocoderPopup = null;
-      });
-    }
-  });
-
-  geocoder.on('clear', () => {
-    if (geocoderPopup) { geocoderPopup.remove(); geocoderPopup = null; }
-    // Restore marker visibility for next search
-    const markerEl = geocoderContainer?.querySelector('.mapboxgl-marker');
-    if (markerEl) markerEl.style.display = '';
-
-    // If city was deactivated (non-analyzed search), restore default city
-    if (!activeCity) {
-      setActiveCitySelection('NEWARK CITY');
-    } else {
-      const findingCard = document.getElementById('finding-card');
-      if (findingCard) findingCard.style.display = '';
-    }
-  });
-
-  // Mount geocoder into sidebar container
-  if (geocoderContainer) {
+    // Mount geocoder into sidebar container
     geocoderContainer.appendChild(geocoder.onAdd(map));
   }
 
@@ -1632,7 +1987,7 @@ function updateBlueAcresStats() {
   const baMunName = matchingBaMun ? matchingBaMun[0] : null;
   const cityCount = baMunName ? (blueAcresCounts[baMunName] || 0) : 0;
 
-  const cityDisplayName = municipalityLabels[activeCity] || activeCity;
+  const cityDisplayName = formatMunLabel(activeCity) || activeCity;
 
   if (cityCount > 0) {
     statsEl.innerHTML = `
@@ -1740,7 +2095,7 @@ document.getElementById('download-csv').addEventListener('click', () => {
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
 
-    const cityName = municipalityLabels[activeCity] || activeCity;
+    const cityName = formatMunLabel(activeCity) || activeCity;
     const cleanCityName = cityName.replace(/\s+/g, '_');
     const filename = `${cleanCityName}_2025_2050_flood_exposed_assets.csv`;
 
@@ -1860,14 +2215,20 @@ document.querySelectorAll('.tooltip-wrap').forEach(wrap => {
 
   if (mobileSelect) {
     mobileSelect.addEventListener('change', e => {
-      setActiveCitySelection(e.target.value);
+      const raw = e.target.value;
+      const resolved = resolveMunFromInputValue(raw);
+      if (resolved) {
+        setActiveCitySelection(resolved);
+      } else if (raw && raw.trim()) {
+        e.target.value = activeCity ? formatMunLabel(activeCity) : '';
+      }
     });
   }
 
   // Keep mobile select in sync when desktop select changes
   if (desktopSelect) {
     desktopSelect.addEventListener('change', () => {
-      if (mobileSelect) mobileSelect.value = activeCity;
+      if (mobileSelect && activeCity) mobileSelect.value = formatMunLabel(activeCity);
       updateMobileFinding();
       updateMobileBlueAcresStats();
     });
@@ -1919,18 +2280,25 @@ document.querySelectorAll('.tooltip-wrap').forEach(wrap => {
       return;
     }
 
-    // Fallback: use computed counts
-    const cityDisplayName = municipalityLabels[activeCity] || activeCity;
-    const overall = municipalityOverall[activeCity];
-    if (overall) {
+    // Fallback: use computed counts from CSV overall if present; otherwise
+    // mirror the desktop finding text element (which loadLayers populates from
+    // the map itself for munis without CSV data).
+    const cityDisplayName = formatMunLabel(activeCity) || activeCity;
+    if (csvOverall) {
       el.innerHTML = `
-        Of <strong>${overall.total}</strong> public assets in ${cityDisplayName},
-        <strong>${overall.risk2025}</strong> are in the floodplain today &mdash;
-        <span class="finding-2050">rising to ${overall.risk2050} by 2050</span>
-        (${overall.pct2050} of all assets).
+        Of <strong>${csvOverall.total}</strong> public assets in ${cityDisplayName},
+        <strong>${csvOverall.risk2025}</strong> are in the floodplain today &mdash;
+        <span class="finding-2050">rising to ${csvOverall.risk2050} by 2050</span>
+        (${csvOverall.pct2050} of all assets).
       `;
-    } else {
+    } else if (!activeCity) {
       el.innerHTML = `Select a city to see flood exposure findings.`;
+    } else {
+      // Copy whatever the desktop finding element is showing for this muni
+      const desktopText = document.getElementById('finding-text');
+      el.innerHTML = desktopText && desktopText.innerHTML
+        ? desktopText.innerHTML
+        : `Flood exposure findings for ${cityDisplayName} are being calculated from the map.`;
     }
   };
 
@@ -1951,7 +2319,7 @@ document.querySelectorAll('.tooltip-wrap').forEach(wrap => {
       .find(([_, appKey]) => appKey === activeCity);
     const baMunName = matchingBaMun ? matchingBaMun[0] : null;
     const cityCount = baMunName ? (blueAcresCounts[baMunName] || 0) : 0;
-    const cityDisplayName = municipalityLabels[activeCity] || activeCity;
+    const cityDisplayName = formatMunLabel(activeCity) || activeCity;
 
     if (cityCount > 0) {
       statsEl.innerHTML = `
