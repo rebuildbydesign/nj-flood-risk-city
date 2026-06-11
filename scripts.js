@@ -227,16 +227,16 @@ function formatMunLabel(mun) {
     .join(' ');
 }
 
-const municipalityFactSheetUrls = {
-  "NEWARK CITY": "https://rebuildbydesign.github.io/NJ-City-Fact-Sheet/?city=Newark",
-  "ASBURY PARK CITY": "https://rebuildbydesign.github.io/NJ-City-Fact-Sheet/?city=Asbury+Park+City",
-  "ATLANTIC CITY": "https://rebuildbydesign.github.io/NJ-City-Fact-Sheet/?city=Atlantic+City",
-  "CAMDEN CITY": "https://rebuildbydesign.github.io/NJ-City-Fact-Sheet/?city=Camden",
-  "ELIZABETH CITY": "https://rebuildbydesign.github.io/NJ-City-Fact-Sheet/?city=Elizabeth",
-  "JERSEY CITY": "https://rebuildbydesign.github.io/NJ-City-Fact-Sheet/?city=Jersey+City",
-  "PATERSON CITY": "https://rebuildbydesign.github.io/NJ-City-Fact-Sheet/?city=Paterson",
-  "TRENTON CITY": "https://rebuildbydesign.github.io/NJ-City-Fact-Sheet/?city=Trenton"
-};
+// Every NJ municipality has a fact sheet on the nj-flood-risk-fact-sheet-cities
+// repo. The fact sheet site normalizes the ?city= param via slugifyCityName, so
+// the display label (or the raw MUN key) resolves to the right row.
+const FACT_SHEET_BASE_URL = 'https://rebuildbydesign.github.io/nj-flood-risk-fact-sheet-cities/';
+
+function getFactSheetUrl(mun) {
+  if (!mun) return '';
+  const label = formatMunLabel(mun) || mun;
+  return `${FACT_SHEET_BASE_URL}?city=${encodeURIComponent(label)}`;
+}
 
 const factSheetStatusTimeouts = {};
 
@@ -1277,7 +1277,7 @@ function updateMunicipalityLabel() {
 
 function updateFactSheetButtons() {
   const cityDisplayName = formatMunLabel(activeCity) || '';
-  const href = municipalityFactSheetUrls[activeCity];
+  const href = getFactSheetUrl(activeCity);
   const label = cityDisplayName
     ? `DOWNLOAD ${cityDisplayName.toUpperCase()} FACT SHEET`
     : 'DOWNLOAD FACT SHEET';
@@ -1334,7 +1334,7 @@ function attachFactSheetButtonHandlers() {
 
     btn.dataset.factSheetBound = 'true';
     btn.addEventListener('click', (event) => {
-      const href = municipalityFactSheetUrls[activeCity] || btn.getAttribute('href');
+      const href = getFactSheetUrl(activeCity) || btn.getAttribute('href');
       if (!href) {
         event.preventDefault();
         return;
