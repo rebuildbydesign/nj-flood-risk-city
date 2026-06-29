@@ -26,20 +26,82 @@ let activeYear = "2025";
 let show2025 = true;
 let show2050 = false;
 
-// --- Deep-link: read ?city= URL parameter from county map ---
+// --- Deep-link: read ?city= and ?county= URL parameters from county map ---
 const _urlCityParam = new URLSearchParams(window.location.search).get('city');
-// _validCities now holds every NJ municipality from boundary.json.
+const _urlCountyParam = new URLSearchParams(window.location.search).get('county');
+// _validCities holds every UNIQUE NJ municipality NAME from boundary.json.
 // ALL_MUNICIPALITIES is defined in data/municipalities.js (loaded before this file).
 const _validCities = (typeof ALL_MUNICIPALITIES !== 'undefined' && Array.isArray(ALL_MUNICIPALITIES))
     ? ALL_MUNICIPALITIES.slice()
     : ["NEWARK CITY","ELIZABETH CITY","CAMDEN CITY","TRENTON CITY",
        "JERSEY CITY","PATERSON CITY","ASBURY PARK CITY","ATLANTIC CITY"];
+
+// ========================================
+// COMPOSITE MUNICIPALITY KEY (MUN + COUNTY)
+// 12 township names repeat across counties (5 Washington Twps, 4 Franklin, etc.).
+// We must identify each municipality by NAME + COUNTY, not name alone, or the
+// same-named townships collapse onto one set of numbers. _muniRecords holds one
+// {mun, county} per real municipality (564 total; Pine Valley removed).
+// ========================================
+const _muniRecords = (typeof ALL_MUNICIPALITY_RECORDS !== 'undefined' && Array.isArray(ALL_MUNICIPALITY_RECORDS))
+    ? ALL_MUNICIPALITY_RECORDS.slice()
+    : _validCities.map(m => ({ mun: m, county: null }));
+
+// How many counties each municipality NAME appears in.
+const _munCountByName = {};
+_muniRecords.forEach(r => { _munCountByName[r.mun] = (_munCountByName[r.mun] || 0) + 1; });
+// List of counties for each name (used to resolve a county when none is supplied).
+const _countiesByMun = {};
+_muniRecords.forEach(r => { (_countiesByMun[r.mun] = _countiesByMun[r.mun] || []).push(r.county); });
+
+// True when a name exists in more than one county and therefore needs the county
+// to disambiguate it (Washington Twp, Franklin Twp, etc.).
+function isSameNamed(mun) { return (_munCountByName[mun] || 0) > 1; }
+
+// Canonical key. For unique names this is just the name (so border-tagged strays
+// still aggregate under the one city); for same-named towns it is "MUN|COUNTY".
+function cityKey(mun, county) {
+  return (county && isSameNamed(mun)) ? `${mun}|${county}` : mun;
+}
+
+// Given a name and an optional county, return the county we should use. If the
+// name is unique, county is irrelevant (return null). If same-named and a county
+// was supplied and valid, use it; otherwise fall back to the first county.
+function resolveCounty(mun, county) {
+  if (!isSameNamed(mun)) return null;
+  const counties = _countiesByMun[mun] || [];
+  if (county && counties.includes(county)) return county;
+  return counties[0] || null;
+}
+
 // The 8 cities that have full per-city findings data (CSV + fact sheets)
 const _analyzedCities = ["NEWARK CITY","ELIZABETH CITY","CAMDEN CITY","TRENTON CITY",
                          "JERSEY CITY","PATERSON CITY","ASBURY PARK CITY","ATLANTIC CITY"];
+
 let activeCity = (_urlCityParam && _validCities.includes(_urlCityParam))
     ? _urlCityParam
     : "NEWARK CITY";
+// County paired with activeCity (only meaningful for same-named towns).
+let activeCounty = resolveCounty(activeCity, _urlCountyParam ? _urlCountyParam.toUpperCase() : null);
+
+// Composite key for the active municipality (used for all data lookups).
+function activeKey() { return cityKey(activeCity, activeCounty); }
+
+// Mapbox filter expression scoping a layer to the active municipality. For
+// same-named towns it adds the COUNTY condition so only the right polygon /
+// assets / floodplain show; for unique names it filters by name alone.
+function munFilter() {
+  if (activeCounty && isSameNamed(activeCity)) {
+    return ['all', ['==', ['get', 'MUN'], activeCity], ['==', ['get', 'COUNTY'], activeCounty]];
+  }
+  return ['==', ['get', 'MUN'], activeCity];
+}
+
+// Title-case a county name for display ("GLOUCESTER" -> "Gloucester").
+function formatCountyLabel(county) {
+  if (!county) return '';
+  return county.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+}
 
 // Initial input value sync happens later, after formatMunLabel() is defined
 // (see populateMunicipalityDatalist call below). This keeps the input showing
@@ -232,10 +294,22 @@ function formatMunLabel(mun) {
 // the display label (or the raw MUN key) resolves to the right row.
 const FACT_SHEET_BASE_URL = 'https://rebuildbydesign.github.io/nj-flood-risk-fact-sheet-cities/';
 
-function getFactSheetUrl(mun) {
+// Display name including county for same-named townships:
+// "Washington Township (Gloucester)"; plain label for unique names.
+function cityDisplay(mun, county) {
+  const base = formatMunLabel(mun) || mun || '';
+  return (isSameNamed(mun) && county) ? `${base} (${formatCountyLabel(county)})` : base;
+}
+
+function getFactSheetUrl(mun, county) {
   if (!mun) return '';
   const label = formatMunLabel(mun) || mun;
-  return `${FACT_SHEET_BASE_URL}?city=${encodeURIComponent(label)}`;
+  let url = `${FACT_SHEET_BASE_URL}?city=${encodeURIComponent(label)}`;
+  // Same-named towns need the county so the fact sheet opens the right row.
+  if (isSameNamed(mun) && county) {
+    url += `&county=${encodeURIComponent(formatCountyLabel(county))}`;
+  }
+  return url;
 }
 
 const factSheetStatusTimeouts = {};
@@ -276,20 +350,18 @@ function resolveMunFromInputValue(value) {
 // the two instances (desktop + mobile) in sync via setActiveCitySelection.
 // ========================================
 
-// Pre-sorted list of { mun, label } used for filtering. Built once.
-const _muniSearchEntries = _validCities
-  .map((mun) => ({ mun, label: formatMunLabel(mun) || mun }))
+// Pre-sorted list of { mun, county, key, label } used for filtering. One entry
+// per real municipality, so each same-named township appears separately, e.g.
+// "Washington Township (Bergen)" ... "Washington Township (Warren)".
+const _muniSearchEntries = _muniRecords
+  .map(({ mun, county }) => ({
+    mun,
+    county,
+    key: cityKey(mun, county),
+    label: cityDisplay(mun, county)
+  }))
   .filter((e) => e.label)
   .sort((a, b) => a.label.localeCompare(b.label));
-
-// Disambiguate rare duplicate labels (append the MUN key in parens).
-(() => {
-  const seen = new Set();
-  _muniSearchEntries.forEach((e) => {
-    if (seen.has(e.label)) e.label = `${e.label} (${e.mun})`;
-    seen.add(e.label);
-  });
-})();
 
 // Escape HTML so a muni name containing < or & can't break the markup.
 function escapeHtml(str) {
@@ -349,7 +421,8 @@ function initMuniSearch(inputEl, listEl) {
       listEl.innerHTML = currentMatches
         .map((e, i) => {
           const active = i === activeIndex ? ' is-active' : '';
-          return `<li class="muni-search-option${active}" role="option" data-mun="${escapeHtml(e.mun)}" data-index="${i}">${highlightMatch(e.label, query)}</li>`;
+          const countyAttr = e.county ? ` data-county="${escapeHtml(e.county)}"` : '';
+          return `<li class="muni-search-option${active}" role="option" data-mun="${escapeHtml(e.mun)}"${countyAttr} data-index="${i}">${highlightMatch(e.label, query)}</li>`;
         })
         .join('');
     }
@@ -362,17 +435,17 @@ function initMuniSearch(inputEl, listEl) {
   }
 
   function commit(entryOrValue) {
-    let mun = null;
     if (entryOrValue && typeof entryOrValue === 'object' && entryOrValue.mun) {
-      mun = entryOrValue.mun;
+      // From a selected suggestion: carries mun + county.
+      setActiveCitySelection({ mun: entryOrValue.mun, county: entryOrValue.county || null });
     } else {
-      mun = resolveMunFromInputValue(entryOrValue);
-    }
-    if (mun) {
-      setActiveCitySelection(mun);
-    } else {
-      // Typed text we can't match — revert to the currently active city's label
-      inputEl.value = activeCity ? formatMunLabel(activeCity) : '';
+      const mun = resolveMunFromInputValue(entryOrValue);
+      if (mun) {
+        setActiveCitySelection(mun);
+      } else {
+        // Typed text we can't match — revert to the active city's label
+        inputEl.value = activeCity ? cityDisplay(activeCity, activeCounty) : '';
+      }
     }
     hide();
   }
@@ -420,7 +493,7 @@ function initMuniSearch(inputEl, listEl) {
     if (!li) return;
     e.preventDefault();
     const mun = li.dataset.mun;
-    if (mun) commit({ mun });
+    if (mun) commit({ mun, county: li.dataset.county || null });
   });
 
   inputEl.addEventListener('blur', () => {
@@ -448,7 +521,7 @@ function setupMuniSearch() {
   // Seed both inputs with the active city's friendly label on startup.
   const desktopSelect = document.getElementById('municipality-select');
   const mobileSelect = document.getElementById('mobile-municipality-select');
-  const currentLabel = activeCity ? formatMunLabel(activeCity) : '';
+  const currentLabel = activeCity ? cityDisplay(activeCity, activeCounty) : '';
   if (desktopSelect) desktopSelect.value = currentLabel;
   if (mobileSelect) mobileSelect.value = currentLabel;
 }
@@ -591,34 +664,40 @@ function loadMunicipalityTotals() {
         // Keep the two in sync so filters and lookups match.
         if (mun === 'SOUTH ORANGE VILLAGE') mun = 'SOUTH ORANGE VILLAGE TWP';
 
+        const county = (row[idx.county] || '').trim().toUpperCase();
+        // Composite key: same-named townships are kept distinct by county; unique
+        // names aggregate all rows (including any border-mis-tagged county) together.
+        const key = cityKey(mun, county);
+
         const csvAsset = (row[idx.asset] || '').trim();
         const appKey = csvAssetKeyMap[csvAsset];
         if (!appKey) continue;
 
-        if (!municipalityTotals[mun]) municipalityTotals[mun] = {};
-        municipalityTotals[mun][appKey] = (municipalityTotals[mun][appKey] || 0) + 1;
+        if (!municipalityTotals[key]) municipalityTotals[key] = {};
+        municipalityTotals[key][appKey] = (municipalityTotals[key][appKey] || 0) + 1;
 
-        if (!municipalityOverall[mun]) {
-          municipalityOverall[mun] = {
+        if (!municipalityOverall[key]) {
+          municipalityOverall[key] = {
+            mun, county: isSameNamed(mun) ? county : null,
             total: 0, risk2025: 0, risk2050: 0,
             pct2025: '0%', pct2050: '0%', finding: ''
           };
         }
-        municipalityOverall[mun].total += 1;
-        if ((row[idx.flood2025] || '').trim() === '1') municipalityOverall[mun].risk2025 += 1;
-        if ((row[idx.flood2050] || '').trim() === '1') municipalityOverall[mun].risk2050 += 1;
+        municipalityOverall[key].total += 1;
+        if ((row[idx.flood2025] || '').trim() === '1') municipalityOverall[key].risk2025 += 1;
+        if ((row[idx.flood2050] || '').trim() === '1') municipalityOverall[key].risk2050 += 1;
       }
 
       // Compute percentages + generate the findings sentence (same template the map
-      // and mobile sheet expect). Uses formatMunLabel for a friendly display name.
-      Object.keys(municipalityOverall).forEach((mun) => {
-        const m = municipalityOverall[mun];
+      // and mobile sheet expect). Uses cityDisplay for a friendly display name.
+      Object.keys(municipalityOverall).forEach((key) => {
+        const m = municipalityOverall[key];
         const p25 = m.total > 0 ? ((m.risk2025 / m.total) * 100).toFixed(1) + '%' : '0%';
         const p50 = m.total > 0 ? ((m.risk2050 / m.total) * 100).toFixed(1) + '%' : '0%';
         m.pct2025 = p25;
         m.pct2050 = p50;
 
-        const display = formatMunLabel(mun) || mun;
+        const display = cityDisplay(m.mun, m.county);
         if (m.total === 0) {
           m.finding = `No public assets are mapped for ${display}.`;
         } else if (m.risk2050 === 0) {
@@ -664,7 +743,7 @@ function loadLayers() {
   // Filter floodplain layers to active municipality only
   ['floodplain_2025', 'floodplain_2050'].forEach(id => {
     if (map.getLayer(id)) {
-      map.setFilter(id, ['==', ['get', 'MUN'], activeCity]);
+      map.setFilter(id, munFilter());
     }
   });
 
@@ -681,10 +760,10 @@ function loadLayers() {
   map.setLayoutProperty(visibleAssetId, 'visibility', 'visible');
 
   // Filter to active municipality (respecting hidden asset types)
-  map.setFilter('boundary', ['==', ['get', 'MUN'], activeCity]);
+  map.setFilter('boundary', munFilter());
 
   // Build asset filter including hidden types (+ aliases)
-  const assetFilters = ['all', ['==', ['get', 'MUN'], activeCity]];
+  const assetFilters = ['all', munFilter()];
   hiddenAssetTypes.forEach(type => {
     assetFilters.push(['!=', ['get', 'ASSET'], type]);
     Object.entries(assetNormalize).forEach(([alias, normalized]) => {
@@ -722,7 +801,7 @@ function getFeaturesForYear(year) {
   if (!layer) return [];
 
   const rawFeatures = map.querySourceFeatures(layer.source, {
-    filter: ['==', ['get', 'MUN'], activeCity]
+    filter: munFilter()
   });
 
   const uniqueFeatures = {};
@@ -776,7 +855,7 @@ function updateLegend() {
     syncActiveAssetLayerVisibility();
 
     // Get totals for the active municipality from CSV data
-    const munTotals = municipalityTotals[activeCity] || {};
+    const munTotals = municipalityTotals[activeKey()] || {};
 
     // All unique asset types across both years AND totals
     const allTypes = new Set([
@@ -785,10 +864,10 @@ function updateLegend() {
       ...Object.keys(munTotals)
     ]);
 
-    const cityDisplayName = formatMunLabel(activeCity) || activeCity;
+    const cityDisplayName = cityDisplay(activeCity, activeCounty) || activeCity;
 
     // Use CSV overall totals if available, else compute from asset type totals
-    const csvOverall = municipalityOverall[activeCity];
+    const csvOverall = municipalityOverall[activeKey()];
     let overallTotal, overallRisk2025, overallRisk2050, pctRisk2025, pctRisk2050;
 
     if (csvOverall) {
@@ -971,7 +1050,7 @@ function applyAssetFilter() {
   const assetId = `assets_${activeYear}`;
   if (!map.getLayer(assetId)) return;
 
-  const filters = ['all', ['==', ['get', 'MUN'], activeCity]];
+  const filters = ['all', munFilter()];
 
   if (hiddenAssetTypes.size > 0) {
     // Exclude hidden types (including any GeoJSON alias names)
@@ -994,8 +1073,9 @@ function applyAssetFilter() {
 // ZOOM TO MUNICIPALITY
 // Fits map viewport to selected municipality boundary
 // ========================================
-function zoomToMunicipality(munName) {
-  const bounds = boundaryBoundsByMun[munName];
+function zoomToMunicipality(munKey) {
+  // munKey is a composite key (cityKey output): "NEWARK CITY" or "WASHINGTON TWP|GLOUCESTER".
+  const bounds = boundaryBoundsByMun[munKey];
   if (!bounds) return;
 
   // Detect mobile
@@ -1004,7 +1084,7 @@ function zoomToMunicipality(munName) {
   // Cities that need extra zoom boost (geographically smaller or elongated)
   const tightCities = ["NEWARK CITY","ELIZABETH CITY","TRENTON CITY",
                        "PATERSON CITY","ASBURY PARK CITY","ATLANTIC CITY"];
-  const isTight = tightCities.includes(munName);
+  const isTight = tightCities.includes(munKey);
 
   map.stop();
   map.fitBounds(bounds, {
@@ -1063,19 +1143,16 @@ function isPointInPolygon(point, rings) {
 }
 
 function findAnalyzedCityAtLngLat(coords) {
-  for (const city of _validCities) {
-    const feature = boundaryFeaturesByMun[city];
+  // Iterate the indexed boundary features (keyed by composite key) and return the
+  // matching municipality as { mun, county } so same-named townships resolve correctly.
+  for (const feature of Object.values(boundaryFeaturesByMun)) {
     const geometry = feature?.geometry;
     if (!geometry) continue;
-
-    if (geometry.type === 'Polygon' && isPointInPolygon(coords, geometry.coordinates)) {
-      return city;
-    }
-
-    if (geometry.type === 'MultiPolygon') {
-      const isInside = geometry.coordinates.some(polygon => isPointInPolygon(coords, polygon));
-      if (isInside) return city;
-    }
+    const props = feature.properties || {};
+    const hit =
+      (geometry.type === 'Polygon' && isPointInPolygon(coords, geometry.coordinates)) ||
+      (geometry.type === 'MultiPolygon' && geometry.coordinates.some(polygon => isPointInPolygon(coords, polygon)));
+    if (hit) return { mun: props.MUN, county: props.COUNTY || null };
   }
 
   return null;
@@ -1137,19 +1214,27 @@ function findAnalyzedCityFromText(value) {
   return null;
 }
 
-function setActiveCitySelection(cityKey) {
-  // Accept either a MUN key ("NEWARK CITY") or a display label ("Newark") — the
-  // datalist sends the label, the geocoder sends the MUN key.
-  const resolved = _validCities.includes(cityKey) ? cityKey : resolveMunFromInputValue(cityKey);
-  if (!resolved) return;
+function setActiveCitySelection(sel) {
+  // Accept a MUN name ("NEWARK CITY"), a display label ("Newark"), or an object
+  // { mun, county } (from the search suggestion or point-in-polygon geocoder).
+  let mun = null;
+  let county = null;
+  if (sel && typeof sel === 'object') {
+    mun = sel.mun || null;
+    county = sel.county || null;
+  } else {
+    mun = _validCities.includes(sel) ? sel : resolveMunFromInputValue(sel);
+  }
+  if (!mun) return;
 
   closeSelectedAssetPopup();
   removeHoverPopup();
-  activeCity = resolved;
+  activeCity = mun;
+  activeCounty = resolveCounty(mun, county ? String(county).toUpperCase() : null);
 
   const desktopSelect = document.getElementById('municipality-select');
   const mobileSelect = document.getElementById('mobile-municipality-select');
-  const label = formatMunLabel(activeCity);
+  const label = cityDisplay(activeCity, activeCounty);
   if (desktopSelect) desktopSelect.value = label;
   if (mobileSelect) mobileSelect.value = label;
 
@@ -1167,7 +1252,7 @@ function setActiveCitySelection(cityKey) {
   if (findingCard) findingCard.style.display = '';
 
   loadLayers();
-  zoomToMunicipality(activeCity);
+  zoomToMunicipality(activeKey());
   updateMunicipalityLabel();
 
   if (blueAcresVisible) {
@@ -1186,6 +1271,7 @@ function deactivateCity() {
   closeSelectedAssetPopup();
   removeHoverPopup();
   activeCity = null;
+  activeCounty = null;
 
   // Reset both dropdowns to the blank placeholder
   const desktopSelect = document.getElementById('municipality-select');
@@ -1224,10 +1310,12 @@ function getLocalCityGeocoderResults(query) {
   if (!normalizedQuery) return [];
 
   return _validCities
-    .map(cityKey => {
-      const label = formatMunLabel(cityKey);
+    .map(munName => {
+      const label = formatMunLabel(munName);
       const normalizedLabel = normalizeCityName(label);
-      const bounds = boundaryBoundsByMun[cityKey];
+      // Unique-named cities key their bounds by name; same-named towns are handled
+      // by the typeahead search instead of this address-geocoder helper.
+      const bounds = boundaryBoundsByMun[munName];
       if (!label || !bounds) return null;
 
       if (
@@ -1247,7 +1335,7 @@ function getLocalCityGeocoderResults(query) {
           place_type: ['place'],
           properties: {
             short_code: 'us-nj',
-            analyzed_city_key: cityKey
+            analyzed_city_key: munName
           },
           text: label
         };
@@ -1266,7 +1354,7 @@ function getLocalCityGeocoderResults(query) {
 function updateMunicipalityLabel() {
   const el = document.getElementById('finding-city-name');
   if (!el) return;
-  const cityDisplayName = formatMunLabel(activeCity) || activeCity;
+  const cityDisplayName = cityDisplay(activeCity, activeCounty) || activeCity;
   el.textContent = cityDisplayName;
   updateFactSheetButtons();
 
@@ -1276,8 +1364,8 @@ function updateMunicipalityLabel() {
 }
 
 function updateFactSheetButtons() {
-  const cityDisplayName = formatMunLabel(activeCity) || '';
-  const href = getFactSheetUrl(activeCity);
+  const cityDisplayName = cityDisplay(activeCity, activeCounty) || '';
+  const href = getFactSheetUrl(activeCity, activeCounty);
   const label = cityDisplayName
     ? `DOWNLOAD ${cityDisplayName.toUpperCase()} FACT SHEET`
     : 'DOWNLOAD FACT SHEET';
@@ -1334,7 +1422,7 @@ function attachFactSheetButtonHandlers() {
 
     btn.dataset.factSheetBound = 'true';
     btn.addEventListener('click', (event) => {
-      const href = getFactSheetUrl(activeCity) || btn.getAttribute('href');
+      const href = getFactSheetUrl(activeCity, activeCounty) || btn.getAttribute('href');
       if (!href) {
         event.preventDefault();
         return;
@@ -1365,8 +1453,8 @@ function updateMapFindings(overallTotal, total2025, total2050, pctRisk2025, pctR
   const el = document.getElementById('finding-text');
   if (!el) return;
 
-  // Use CSV findings if available for this city (only the 8 analyzed cities have them)
-  const csvOverall = municipalityOverall[activeCity];
+  // Use CSV findings if available for this city
+  const csvOverall = municipalityOverall[activeKey()];
   if (csvOverall && csvOverall.finding) {
     el.innerHTML = csvOverall.finding;
     return;
@@ -1374,12 +1462,12 @@ function updateMapFindings(overallTotal, total2025, total2050, pctRisk2025, pctR
 
   // Fallback: generate sentence if CSV finding is missing
   if (overallTotal === 0) {
-    const cityDisplayName = formatMunLabel(activeCity) || activeCity || 'this municipality';
+    const cityDisplayName = cityDisplay(activeCity, activeCounty) || activeCity || 'this municipality';
     el.innerHTML = `No public assets in the mapped dataset fall inside the 2050 floodplain for ${cityDisplayName}.`;
     return;
   }
 
-  const cityDisplayName = formatMunLabel(activeCity) || activeCity;
+  const cityDisplayName = cityDisplay(activeCity, activeCounty) || activeCity;
 
   el.innerHTML = `
     Of <strong>${overallTotal}</strong> public assets in ${cityDisplayName},
@@ -1418,7 +1506,7 @@ map.on('load', () => {
       'line-width': 3,
       'line-dasharray': [2, 2]
     },
-    filter: ['==', ['get', 'MUN'], activeCity]
+    filter: munFilter()
   });
   
   // ---- Precompute boundary bounds for zoom function ----
@@ -1427,11 +1515,13 @@ map.on('load', () => {
     .then(geojson => {
       geojson.features.forEach(f => {
         const mun = f.properties?.MUN;
-        if (!mun) return;
-        
+        if (!mun || mun === 'PINE VALLEY BORO') return;  // Pine Valley dissolved 2022
+        const county = f.properties?.COUNTY;
+        const key = cityKey(mun, county);
+
         const bounds = new mapboxgl.LngLatBounds();
         const geom = f.geometry;
-        
+
         if (geom.type === 'Polygon') {
           geom.coordinates[0].forEach(c => bounds.extend(c));
         }
@@ -1440,13 +1530,14 @@ map.on('load', () => {
             p[0].forEach(c => bounds.extend(c))
           );
         }
-        
-        boundaryBoundsByMun[mun] = bounds;
-        if (_validCities.includes(mun)) boundaryFeaturesByMun[mun] = f;
+
+        // Keyed by composite key so each same-named township has its own bounds/feature.
+        boundaryBoundsByMun[key] = bounds;
+        boundaryFeaturesByMun[key] = f;
       });
-      
+
       // Initial zoom after bounds are ready
-      zoomToMunicipality(activeCity);
+      zoomToMunicipality(activeKey());
       updateMunicipalityLabel();
     });
   
@@ -1505,7 +1596,7 @@ map.on('load', () => {
         'circle-stroke-opacity': isMobile ? 0.8 : 1
       },
       layout: { visibility: year === '2025' ? 'visible' : 'none' },
-      filter: ['==', ['get', 'MUN'], activeCity]
+      filter: munFilter()
     });
   });
   
@@ -1703,7 +1794,7 @@ map.on('load', () => {
     } else if (raw && raw.trim()) {
       // Typed a muni we don't recognize — snap back to current activeCity's label
       // so the input doesn't stay in a broken state.
-      e.target.value = activeCity ? formatMunLabel(activeCity) : '';
+      e.target.value = activeCity ? cityDisplay(activeCity, activeCounty) : '';
     }
   });
   
@@ -1987,7 +2078,7 @@ function updateBlueAcresStats() {
   const baMunName = matchingBaMun ? matchingBaMun[0] : null;
   const cityCount = baMunName ? (blueAcresCounts[baMunName] || 0) : 0;
 
-  const cityDisplayName = formatMunLabel(activeCity) || activeCity;
+  const cityDisplayName = cityDisplay(activeCity, activeCounty) || activeCity;
 
   if (cityCount > 0) {
     statsEl.innerHTML = `
@@ -2040,7 +2131,7 @@ document.getElementById('download-csv').addEventListener('click', () => {
       const sourceId = layer.source;
 
       const rawFeatures = map.querySourceFeatures(sourceId, {
-        filter: ['==', ['get', 'MUN'], activeCity]
+        filter: munFilter()
       });
 
       // Deduplicate by UNIQUE_ID within each year
@@ -2095,8 +2186,8 @@ document.getElementById('download-csv').addEventListener('click', () => {
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
 
-    const cityName = formatMunLabel(activeCity) || activeCity;
-    const cleanCityName = cityName.replace(/\s+/g, '_');
+    const cityName = cityDisplay(activeCity, activeCounty) || activeCity;
+    const cleanCityName = cityName.replace(/[()]/g, '').replace(/\s+/g, '_');
     const filename = `${cleanCityName}_2025_2050_flood_exposed_assets.csv`;
 
     link.setAttribute('href', url);
@@ -2220,7 +2311,7 @@ document.querySelectorAll('.tooltip-wrap').forEach(wrap => {
       if (resolved) {
         setActiveCitySelection(resolved);
       } else if (raw && raw.trim()) {
-        e.target.value = activeCity ? formatMunLabel(activeCity) : '';
+        e.target.value = activeCity ? cityDisplay(activeCity, activeCounty) : '';
       }
     });
   }
@@ -2228,7 +2319,7 @@ document.querySelectorAll('.tooltip-wrap').forEach(wrap => {
   // Keep mobile select in sync when desktop select changes
   if (desktopSelect) {
     desktopSelect.addEventListener('change', () => {
-      if (mobileSelect && activeCity) mobileSelect.value = formatMunLabel(activeCity);
+      if (mobileSelect && activeCity) mobileSelect.value = cityDisplay(activeCity, activeCounty);
       updateMobileFinding();
       updateMobileBlueAcresStats();
     });
@@ -2274,7 +2365,7 @@ document.querySelectorAll('.tooltip-wrap').forEach(wrap => {
     const el = document.getElementById('mobile-finding-text');
     if (!el) return;
 
-    const csvOverall = municipalityOverall[activeCity];
+    const csvOverall = municipalityOverall[activeKey()];
     if (csvOverall && csvOverall.finding) {
       el.innerHTML = csvOverall.finding;
       return;
@@ -2283,7 +2374,7 @@ document.querySelectorAll('.tooltip-wrap').forEach(wrap => {
     // Fallback: use computed counts from CSV overall if present; otherwise
     // mirror the desktop finding text element (which loadLayers populates from
     // the map itself for munis without CSV data).
-    const cityDisplayName = formatMunLabel(activeCity) || activeCity;
+    const cityDisplayName = cityDisplay(activeCity, activeCounty) || activeCity;
     if (csvOverall) {
       el.innerHTML = `
         Of <strong>${csvOverall.total}</strong> public assets in ${cityDisplayName},
@@ -2319,7 +2410,7 @@ document.querySelectorAll('.tooltip-wrap').forEach(wrap => {
       .find(([_, appKey]) => appKey === activeCity);
     const baMunName = matchingBaMun ? matchingBaMun[0] : null;
     const cityCount = baMunName ? (blueAcresCounts[baMunName] || 0) : 0;
-    const cityDisplayName = formatMunLabel(activeCity) || activeCity;
+    const cityDisplayName = cityDisplay(activeCity, activeCounty) || activeCity;
 
     if (cityCount > 0) {
       statsEl.innerHTML = `
