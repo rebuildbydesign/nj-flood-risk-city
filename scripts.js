@@ -123,16 +123,62 @@ const hiddenAssetTypes = new Set();
 // Blue Acres layer visibility
 let blueAcresVisible = false;
 
-// Map Blue Acres municipality names to app city keys
-const blueAcresMunMap = {
-  "Newark City": "NEWARK CITY",
-  "Paterson City": "PATERSON CITY"
-};
-
-// Pre-cached Blue Acres parcel counts by municipality (from GeoJSON)
-const blueAcresCounts = {
-  "Newark City": 6,
-  "Paterson City": 24
+// Blue Acres parcels per municipality, keyed by cityKey(mun, county).
+// Derived from data/blueacres_centroids.geojson. The export spells municipality
+// types out ("Manville Borough") while this app abbreviates ("MANVILLE BORO"),
+// so the names are reconciled before joining; matching on the raw string alone
+// silently drops every borough and township. mun/county carry the source
+// spellings for Mapbox filters, and both are needed to match: "Fairfield
+// Township" exists in Cumberland and Essex. All 1,677 statewide parcels place.
+const BLUE_ACRES = {
+  "MANVILLE BORO":            { n: 388, mun: "Manville Borough", county: "Somerset" },
+  "SAYREVILLE BORO":          { n: 228, mun: "Sayreville Borough", county: "Middlesex" },
+  "WOODBRIDGE TWP":           { n: 172, mun: "Woodbridge Township", county: "Middlesex" },
+  "SOUTH RIVER BORO":         { n: 127, mun: "South River Borough", county: "Middlesex" },
+  "LINCOLN PARK BORO":        { n: 113, mun: "Lincoln Park Borough", county: "Morris" },
+  "POMPTON LAKES BORO":       { n:  69, mun: "Pompton Lakes Borough", county: "Passaic" },
+  "WAYNE TWP":                { n:  65, mun: "Wayne Township", county: "Passaic" },
+  "LAWRENCE TWP|CUMBERLAND":  { n:  50, mun: "Lawrence Township", county: "Cumberland" },
+  "DOWNE TWP":                { n:  45, mun: "Downe Township", county: "Cumberland" },
+  "NEW MILFORD BORO":         { n:  44, mun: "New Milford Borough", county: "Bergen" },
+  "OLD BRIDGE TWP":           { n:  39, mun: "Old Bridge Township", county: "Middlesex" },
+  "SOUTHAMPTON TWP":          { n:  39, mun: "Southampton Township", county: "Burlington" },
+  "FAIRFIELD TWP|CUMBERLAND": { n:  36, mun: "Fairfield Township", county: "Cumberland" },
+  "LITTLE FALLS TWP":         { n:  30, mun: "Little Falls Township", county: "Passaic" },
+  "RAHWAY CITY":              { n:  27, mun: "Rahway City", county: "Union" },
+  "HARMONY TWP":              { n:  26, mun: "Harmony Township", county: "Warren" },
+  "LINDEN CITY":              { n:  26, mun: "Linden City", county: "Union" },
+  "PATERSON CITY":            { n:  24, mun: "Paterson City", county: "Passaic" },
+  "FAIRFIELD TWP|ESSEX":      { n:  19, mun: "Fairfield Township", county: "Essex" },
+  "PLEASANTVILLE CITY":       { n:  19, mun: "Pleasantville City", county: "Atlantic" },
+  "OCEAN TWP|MONMOUTH":       { n:  10, mun: "Ocean Township", county: "Monmouth" },
+  "PEMBERTON TWP":            { n:   7, mun: "Pemberton Township", county: "Burlington" },
+  "DENVILLE TWP":             { n:   6, mun: "Denville Township", county: "Morris" },
+  "EAST BRUNSWICK TWP":       { n:   6, mun: "East Brunswick Township", county: "Middlesex" },
+  "MEDFORD TWP":              { n:   6, mun: "Medford Township", county: "Burlington" },
+  "NEWARK CITY":              { n:   6, mun: "Newark City", county: "Essex" },
+  "HILLSDALE BORO":           { n:   4, mun: "Hillsdale Borough", county: "Bergen" },
+  "KEANSBURG BORO":           { n:   4, mun: "Keansburg Borough", county: "Monmouth" },
+  "MANALAPAN TWP":            { n:   4, mun: "Manalapan Township", county: "Monmouth" },
+  "MIDDLESEX BORO":           { n:   4, mun: "Middlesex Borough", county: "Middlesex" },
+  "MONTGOMERY TWP":           { n:   4, mun: "Montgomery Township", county: "Somerset" },
+  "WESTWOOD BORO":            { n:   4, mun: "Westwood Borough", county: "Bergen" },
+  "EASTAMPTON TWP":           { n:   3, mun: "Eastampton Township", county: "Burlington" },
+  "HILLSBOROUGH TWP":         { n:   3, mun: "Hillsborough Township", county: "Somerset" },
+  "LAMBERTVILLE CITY":        { n:   3, mun: "Lambertville City", county: "Hunterdon" },
+  "DUNELLEN BORO":            { n:   2, mun: "Dunellen Borough", county: "Middlesex" },
+  "FRANKLIN TWP|SOMERSET":    { n:   2, mun: "Franklin Township", county: "Somerset" },
+  "LEBANON TWP":              { n:   2, mun: "Lebanon Township", county: "Hunterdon" },
+  "WOODLAND PARK BORO":       { n:   2, mun: "Woodland Park Borough", county: "Passaic" },
+  "BOUND BROOK BORO":         { n:   1, mun: "Bound Brook Borough", county: "Middlesex" },
+  "BRIDGEWATER TWP":          { n:   1, mun: "Bridgewater Township", county: "Somerset" },
+  "CLIFTON CITY":             { n:   1, mun: "Clifton City", county: "Passaic" },
+  "DELAWARE TWP":             { n:   1, mun: "Delaware Township", county: "Hunterdon" },
+  "FAIR HAVEN BORO":          { n:   1, mun: "Fair Haven Borough", county: "Monmouth" },
+  "LINWOOD CITY":             { n:   1, mun: "Linwood City", county: "Atlantic" },
+  "LUMBERTON TWP":            { n:   1, mun: "Lumberton Township", county: "Burlington" },
+  "OAKLAND BORO":             { n:   1, mun: "Oakland Borough", county: "Bergen" },
+  "WOODCLIFF LAKE BORO":      { n:   1, mun: "Woodcliff Lake Borough", county: "Bergen" },
 };
 const blueAcresTotalCount = 1677;
 
@@ -2020,35 +2066,31 @@ map.on('load', () => {
 function updateBlueAcresHighlight() {
   if (!map.getLayer('blueacres-fill')) return;
 
-  // Find the Blue Acres municipality name that matches the active city
-  const matchingBaMun = Object.entries(blueAcresMunMap)
-    .find(([_, appKey]) => appKey === activeCity);
-  const baMunName = matchingBaMun ? matchingBaMun[0] : null;
+  // Match parcels in the active city on name AND county: "Fairfield Township"
+  // exists in both Cumberland and Essex.
+  const ba = activeCity ? BLUE_ACRES[cityKey(activeCity, activeCounty)] : null;
+  const inActiveCity = ba
+    ? ['all', ['==', ['get', 'MUNICIPALI'], ba.mun], ['==', ['get', 'COUNTY'], ba.county]]
+    : ['literal', false];
 
   // Bright teal for parcels in the active city, muted for others
   map.setPaintProperty('blueacres-fill', 'fill-opacity', [
     'case',
-    baMunName
-      ? ['==', ['get', 'MUNICIPALI'], baMunName]
-      : ['literal', false],
+    inActiveCity,
     0.65,  // highlighted
     0.25   // muted
   ]);
 
   map.setPaintProperty('blueacres-fill', 'fill-color', [
     'case',
-    baMunName
-      ? ['==', ['get', 'MUNICIPALI'], baMunName]
-      : ['literal', false],
+    inActiveCity,
     '#0d9488',  // bright teal
     '#5eead4'   // lighter muted teal
   ]);
 
   map.setPaintProperty('blueacres-outline', 'line-opacity', [
     'case',
-    baMunName
-      ? ['==', ['get', 'MUNICIPALI'], baMunName]
-      : ['literal', false],
+    inActiveCity,
     0.9,
     0.3
   ]);
@@ -2072,11 +2114,9 @@ function updateBlueAcresStats() {
   // Use pre-cached counts (querySourceFeatures is viewport-dependent and unreliable)
   const total = blueAcresTotalCount;
 
-  // Find matching Blue Acres municipality name for active city
-  const matchingBaMun = Object.entries(blueAcresMunMap)
-    .find(([_, appKey]) => appKey === activeCity);
-  const baMunName = matchingBaMun ? matchingBaMun[0] : null;
-  const cityCount = baMunName ? (blueAcresCounts[baMunName] || 0) : 0;
+  const cityCount = activeCity
+    ? ((BLUE_ACRES[cityKey(activeCity, activeCounty)] || {}).n || 0)
+    : 0;
 
   const cityDisplayName = cityDisplay(activeCity, activeCounty) || activeCity;
 
@@ -2406,10 +2446,9 @@ document.querySelectorAll('.tooltip-wrap').forEach(wrap => {
     statsEl.classList.remove('hidden');
 
     const total = blueAcresTotalCount;
-    const matchingBaMun = Object.entries(blueAcresMunMap)
-      .find(([_, appKey]) => appKey === activeCity);
-    const baMunName = matchingBaMun ? matchingBaMun[0] : null;
-    const cityCount = baMunName ? (blueAcresCounts[baMunName] || 0) : 0;
+    const cityCount = activeCity
+      ? ((BLUE_ACRES[cityKey(activeCity, activeCounty)] || {}).n || 0)
+      : 0;
     const cityDisplayName = cityDisplay(activeCity, activeCounty) || activeCity;
 
     if (cityCount > 0) {
